@@ -199,7 +199,11 @@ async function fetchTimed(url,options={},timeout=12000){
     ? '/api/market?path='+encodeURIComponent(url.slice('https://api.dexscreener.com'.length))
     : url;
    const response=await fetch(targetUrl,{...options,signal:controller.signal});
-   if(response.status===429){apiBackoffUntil=Date.now()+60000;throw Error('DexScreener HTTP 429 rate limit; requests paused for 60 seconds.');}
+   if(response.status===429||response.status===503){
+    const retrySeconds=Math.max(1,Math.min(300,Number(response.headers.get('retry-after'))||60));
+    apiBackoffUntil=Date.now()+retrySeconds*1000;
+    throw Error('Market API rate limit or temporary pause; requests paused for '+retrySeconds+' seconds.');
+   }
    if(!response.ok)throw Error('HTTP '+response.status);
    const data=await response.json();
    if(method==='GET')apiResponseCache.set(url,{time:Date.now(),data});
