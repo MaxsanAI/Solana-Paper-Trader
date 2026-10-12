@@ -108,7 +108,7 @@ export async function onRequestGet(context) {
     status: 200,
     headers: {
       ...JSON_HEADERS,
-      "cache-control": "public, max-age=0, s-maxage=" + ttl,
+      "cache-control": "public, max-age=" + ttl,
       "x-market-cache": "MISS"
     }
   });
