@@ -5,7 +5,7 @@ A static Solana market paper-trading simulator. It reads public market data from
 ## Features
 - Live Solana pair prices, 24-hour change, liquidity and volume from DexScreener
 - Market discovery from DexScreener search, latest token profiles and token boosts
-- Browser-based AI scan with manual-only paper-bot approvals: tokens scoring above 50/100 show a TRIGGER BOT button on AI Analysis; scores of 65/100 and above are green. The bot never buys automatically, and manual triggers still pass liquidity, volume, age, momentum, activity, blacklist, cash and position-limit checks.
+- Browser-based AI scan with manual-only paper-bot approvals: tokens scoring above 50/100 show a TRIGGER BOT button on AI Analysis; scores of 65/100 and above are green. The bot never buys automatically. Manual approval may override AI strategy filters (liquidity, volume, age, momentum and activity), but still checks the Solana token address and live price, stablecoin exclusion, blacklist, duplicate open positions, virtual cash and position limit.
 - Basic entry filter: positive 24-hour momentum between 2% and 18%, minimum liquidity/volume, and pair age of at least one hour when the age is provided by the data source
 - Virtual wallet with configurable starting balance
 - Simulated buy/sell orders, position mark-to-market, trade history and CSV export
