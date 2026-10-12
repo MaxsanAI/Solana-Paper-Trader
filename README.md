@@ -1,27 +1,24 @@
 # Solana Paper Trader
 
-A static Solana market paper-trading simulator. It uses public DexScreener market data and simulates buys/sells locally in the browser. **It never sends blockchain transactions and never asks for a wallet or private key.**
+A static Solana market paper-trading simulator. It reads public market data from DexScreener and simulates orders locally in the browser. **It never sends blockchain transactions and never asks for a wallet or private key.**
 
 ## Features
-- Real Solana pair prices, 24-hour change, liquidity and volume from DexScreener
+- Live Solana pair prices, 24-hour change, liquidity and volume from DexScreener
+- Market discovery from DexScreener search, latest token profiles and token boosts
+- Optional browser-based auto paper-bot that scans markets every 30 seconds and can open simulated positions using configurable order size, position limit, minimum liquidity and minimum 24-hour volume
+- Basic entry filter: positive 24-hour momentum between 2% and 18%, minimum liquidity/volume, and pair age of at least one hour when the age is provided by the data source
 - Virtual wallet with configurable starting balance
-- Simulated buy and sell orders, position mark-to-market and trade history
-- Per-position take-profit and stop-loss targets; auto-close checks while the page is open and receiving price updates
-- localStorage persistence and CSV export
-- Responsive dark UI, no build step or backend required
+- Simulated buy/sell orders, position mark-to-market, trade history and CSV export
+- Per-position take-profit and stop-loss checks while the page is open and receiving market updates
+- Local browser storage; responsive dark UI; no build step or backend required
 
 ## GitHub Pages
-This is a plain static site; `index.html` is at repository root. To publish:
-1. Open **Settings → Pages**.
-2. Under **Build and deployment**, choose **Deploy from a branch**.
-3. Select branch **main** and folder **/(root)**, then Save.
-4. Wait for the Pages deployment to complete in **Actions**.
-
-The repository currently is private. On GitHub Free, change it to **Public** before enabling Pages; GitHub Pages sites are publicly available. See the [official GitHub Pages guide](https://docs.github.com/en/pages/quickstart).
+The app is a plain static site with index.html at the repository root. The workflow in .github/workflows/static.yml deploys the site from main.
 
 ## Important limitations
-- Browser-only app: auto TP/SL runs only while the page is open and the browser is executing JavaScript. It is not a server-side bot and cannot monitor trades when closed.
-- Price endpoints can be delayed, rate-limited, or unavailable; the app displays an error when market data cannot be fetched.
-- localStorage is device/browser-specific and can be cleared by the user.
-- Token listings and price data are not endorsements of token safety. No wallet connection, real orders, or private keys are used.
-- Tailwind CSS is loaded from its CDN; an internet connection is required.
+- The auto paper-bot is **not** a 24/7 hosted service. It only scans and manages simulated positions while the page is open and the browser is executing JavaScript.
+- This is paper trading only. No real tokens are bought or sold, and no wallet is connected.
+- Liquidity, volume, age and momentum filters are simple heuristics, not a security audit or a guarantee against scams or losses.
+- Market data may be delayed, rate-limited or unavailable. Token prices and local history are not synchronized across devices.
+- TP/SL checks run only while the page is open and receiving market updates.
+- Tailwind CSS is loaded from its CDN, so an internet connection is required.
