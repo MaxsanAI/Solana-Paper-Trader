@@ -234,7 +234,7 @@ function getAiAuditRecord(x,heldSet,blockedSet){
  if(blocked)reasons.push('Manually blocked by you');
  if(held)reasons.push('Already have an open position');
  if(x.score<threshold)reasons.push('Score below buy threshold ('+x.score+' / '+threshold+')');
- const eligible=x.eligible&&!blocked&&!held,decision=blocked?'BLOCKED':held?'HELD':!x.eligible?'REJECTED':x.score>=threshold?'BUY CANDIDATE':'WATCH';
+ const eligible=x.eligible&&!blocked&&!held,decision=blocked?'BLOCKED':held?'HELD':x.score>=65?'BUY CANDIDATE':!x.eligible?'REJECTED':x.score>=threshold?'BUY CANDIDATE':'WATCH';
  if(decision==='WATCH'&&!reasons.length)reasons.push('Passed filters but score is below buy threshold');
  if(decision==='BUY CANDIDATE'&&!reasons.length)reasons.push('Passed all filters and score threshold');
  return {mint,symbol:b.symbol||'TOKEN',name:b.name||'Unknown token',price:Number(m.priceUsd)||0,score:x.score,liq:x.liq,vol:x.vol,h24:x.h24,h1:Number.isFinite(h1)?h1:null,buys:x.buys,sells:x.sells,ageHours:x.ageHours,decision,reasons,positive:x.reasons.slice(0,5),url:m.url||('https://dexscreener.com/solana/'+(m.pairAddress||mint)),eligible,threshold};
