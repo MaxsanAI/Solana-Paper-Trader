@@ -23,6 +23,6 @@ This repository keeps the paper simulator separate and adds an opt-in live swap 
 ## Safety boundaries
 
 - Never put a wallet private key, seed phrase, RPC secret, or trading secret in `index.html`, browser storage, Git, or a public variable. `JUPITER_API_KEY` must be a Cloudflare Pages secret.
-- The paper bot remains browser-based and runs only while the page is active. Live swaps are manual wallet-approved transactions, not automatic bot execution.
-- A genuine autonomous bot would need a separately designed server-side execution service, persistent state, explicit risk limits, secret storage, transaction validation, monitoring, and a separate opt-in before any real funds could be at risk.
+- Both bots run in the browser and only while the page is open. The live bot can automate scanning and candidate selection after explicit approval, but it cannot sign transactions silently or run while the browser is closed.
+- Fully unattended server-side execution would require a separately designed execution service, a dedicated trading wallet, persistent state, explicit risk limits, secure key custody, transaction validation, monitoring, and a separate opt-in. This repository does not store wallet private keys or seed phrases.
 - No Wrangler configuration or Cloudflare binding is required for these two basic Functions. If persistent bot state or scheduled execution is added later, its required Cloudflare resources must be created and configured separately.
