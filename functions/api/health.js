@@ -14,10 +14,13 @@ export function onRequestGet({ env } = {}) {
     service: "solana-paper-trader-api",
     mode: liveTradingConfigured ? "paper-plus-wallet-signed-live-swaps" : "paper-only-until-live-swap-secret-configured",
     liveTradingEnabled: liveTradingConfigured,
+    workersAiConfigured: Boolean(env && env.AI && typeof env.AI.run === "function"),
+    workersAiModel: "@cf/meta/llama-3.1-8b-instruct-fast",
     timestamp: new Date().toISOString(),
     checks: {
       functions: "ok",
-      marketProxy: "configured",
+      marketProxy: "configured; upstream availability tested by /api/market",
+      workersAI: env && env.AI && typeof env.AI.run === "function" ? "binding-AI-configured" : "missing-binding-AI",
       storage: "browser-localStorage",
       orderExecution: liveTradingConfigured ? "jupiter-secret-configured-wallet-signature-required" : "disabled-missing-JUPITER_API_KEY"
     }
