@@ -1,6 +1,6 @@
 # Solana Paper Trader
 
-A static Solana market paper-trading simulator. It reads public market data from DexScreener and simulates orders locally in the browser. **It never sends blockchain transactions and never asks for a wallet or private key.**
+A Solana market terminal with a separate paper-trading simulator and an opt-in, wallet-signed live swap page. Paper trades stay local and simulated. Live swaps are only available on a Cloudflare Pages deployment after the owner configures the Jupiter API secret; the app never asks for or stores a seed phrase/private key.
 
 ## Features
 - Live Solana pair prices, 24-hour change, liquidity and volume from DexScreener
@@ -22,3 +22,16 @@ The app is a plain static site with index.html at the repository root. The workf
 - Market data may be delayed, rate-limited or unavailable. Token prices and local history are not synchronized across devices.
 - TP/SL checks run only while the page is open and receiving market updates.
 - Tailwind CSS is loaded from its CDN, so an internet connection is required.
+
+
+## Live Trading (opt-in, Cloudflare Pages only)
+
+- Open **Live Trading** and connect either Phantom or Solflare.
+- Select a token in Terminal, then choose a small buy size in SOL (initial cap: 0.25 SOL per buy).
+- The wallet must sign each swap. The app never receives private keys and does not auto-buy.
+- **Sell tracked balance** sells the token amount recorded from buys made through this browser. Check your wallet before trading; holdings bought elsewhere are not included in this local tracker.
+- Live swaps use Jupiter Swap API V2 through Cloudflare Pages Functions. GitHub Pages is static and cannot safely hold the API secret, so live swaps will not work on the GitHub Pages deployment.
+- To enable live swaps, deploy this repository to Cloudflare Pages and add a secret named `JUPITER_API_KEY` in the project's **Settings → Variables and Secrets**. Obtain the key from the official Jupiter developer portal. Never put the key in `index.html`, Git, or a public variable.
+- Test the functions on the Cloudflare deployment at `/api/swap/order` only through the app. Without the secret, the API returns a clear disabled message.
+
+Live trading is high risk. The 0.25 SOL cap is a basic guardrail, not a guarantee of safety. Verify token mints, slippage/route details shown by your wallet, and transaction results before retrying failed or timed-out requests.
