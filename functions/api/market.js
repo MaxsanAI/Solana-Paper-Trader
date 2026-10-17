@@ -75,7 +75,7 @@ export async function onRequestGet(context) {
     upstream = await fetch(upstreamUrl.toString(), {
       method: "GET",
       headers: { accept: "application/json" },
-      redirect: "error",
+      redirect: "follow",
       signal: AbortSignal.timeout(10000)
     });
   } catch (error) {
