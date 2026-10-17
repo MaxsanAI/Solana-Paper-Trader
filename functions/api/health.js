@@ -7,18 +7,19 @@ const json = (data, status = 200) => new Response(JSON.stringify(data, null, 2),
   }
 });
 
-export function onRequestGet() {
+export function onRequestGet({ env } = {}) {
+  const liveTradingConfigured = Boolean(env && env.JUPITER_API_KEY);
   return json({
     ok: true,
     service: "solana-paper-trader-api",
-    mode: "paper-only",
-    liveTradingEnabled: false,
+    mode: liveTradingConfigured ? "paper-plus-wallet-signed-live-swaps" : "paper-only-until-live-swap-secret-configured",
+    liveTradingEnabled: liveTradingConfigured,
     timestamp: new Date().toISOString(),
     checks: {
       functions: "ok",
       marketProxy: "configured",
       storage: "browser-localStorage",
-      orderExecution: "disabled"
+      orderExecution: liveTradingConfigured ? "jupiter-secret-configured-wallet-signature-required" : "disabled-missing-JUPITER_API_KEY"
     }
   });
 }
