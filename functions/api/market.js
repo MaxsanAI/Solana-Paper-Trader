@@ -30,6 +30,12 @@ export async function onRequestGet(context) {
   let upstreamUrl;
   try {
     upstreamUrl = new URL(rawPath, UPSTREAM_ORIGIN);
+    // Support clients that pass ?path=/latest/dex/search/ and ?q=SOL
+    // separately, as well as clients that URL-encode the entire upstream path.
+    if (upstreamUrl.pathname === "/latest/dex/search/" && !upstreamUrl.searchParams.has("q")) {
+      const outerQuery = requestUrl.searchParams.get("q");
+      if (outerQuery) upstreamUrl.searchParams.set("q", outerQuery);
+    }
   } catch {
     return json({ ok: false, error: "Invalid market-data path." }, 400);
   }
@@ -72,8 +78,12 @@ export async function onRequestGet(context) {
       redirect: "error",
       signal: AbortSignal.timeout(10000)
     });
-  } catch {
-    return json({ ok: false, error: "Market data provider is temporarily unreachable." }, 502);
+  } catch (error) {
+    return json({
+      ok: false,
+      error: "Market data provider is temporarily unreachable.",
+      detail: String(error?.message || error || "upstream fetch failed").slice(0, 180)
+    }, 502);
   }
 
   if (upstream.status === 429) {
