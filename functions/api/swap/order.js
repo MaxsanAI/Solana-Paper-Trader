@@ -51,11 +51,12 @@ export async function onRequestGet({ request, env }) {
   try {
     upstream = await fetch(JUPITER_ORIGIN + "/swap/v2/order?" + params.toString(), {
       headers: { accept: "application/json", "x-api-key": env.JUPITER_API_KEY },
-      redirect: "error",
-      signal: AbortSignal.timeout(15000)
+      redirect: "follow",
+      signal: AbortSignal.timeout(25000)
     });
-  } catch {
-    return json({ ok: false, error: "Jupiter order service is temporarily unreachable." }, 502);
+  } catch (error) {
+    const diagnostic = String(error?.message || error?.name || "network request failed").slice(0, 180);
+    return json({ ok: false, error: "Jupiter order service could not be reached.", diagnostic }, 502);
   }
 
   const body = await upstream.text();
