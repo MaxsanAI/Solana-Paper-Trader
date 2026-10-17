@@ -480,7 +480,7 @@ async function liveAuthSync(){
    liveState.tracked[p.token_mint]=String(p.token_amount_raw);
    liveState.positions[p.token_mint]={entryPrice:Number(p.entry_price_usd)||0,lastPrice:Number(p.last_price_usd)||0,tp:Number(p.take_profit_pct)||0,sl:Number(p.stop_loss_pct)||0,costSol:Number(p.cost_sol)||0,costUsd:Number(p.cost_usd)||0,entrySolUsd:Number(p.entry_sol_usd)||0,symbol:p.token_symbol||'TOKEN',openedAt:p.opened_at?Date.parse(p.opened_at+'Z'):Date.now(),updatedAt:Date.now(),wallet};
   }
-  liveState.history=(data.history||[]).map(h=>({time:h.created_at?Date.parse(h.created_at+'Z'):Date.now(),side:h.side,mint:h.token_mint,symbol:h.token_symbol,valueUsd:Number(h.value_usd)||0,pnlUsd:h.pnl_usd==null?null:Number(h.pnl_usd),signature:h.tx_signature||'',sol:Number(h.sol_amount)||0,priceUsd:Number(h.price_usd)||0,reason:h.reason||''}));
+  const remoteHistory=(data.history||[]).map(h=>({time:h.created_at?Date.parse(h.created_at+'Z'):Date.now(),side:h.side,mint:h.token_mint,symbol:h.token_symbol,valueUsd:Number(h.value_usd)||0,pnlUsd:h.pnl_usd==null?null:Number(h.pnl_usd),signature:h.tx_signature||'',sol:Number(h.sol_amount)||0,priceUsd:Number(h.price_usd)||0,reason:h.reason||''}));const localOnly=(liveState.history||[]).filter(h=>!remoteHistory.some(r=>r.signature&&r.signature===h.signature&&r.side===h.side));liveState.history=[...remoteHistory,...localOnly].sort((a,b)=>Number(b.time)-Number(a.time)).slice(0,200);
   saveLiveTracking();liveWalletUi();
   liveMessage('Live Trader wallet verified. Live positions and history synced with D1; simulator data was not touched.');
   return true;
