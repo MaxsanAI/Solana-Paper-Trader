@@ -9,6 +9,9 @@ This repository keeps the paper simulator fully separate from real Live Trading.
 - `/api/swap/order` — validated SOL-to-token or token-to-SOL order proxy to Jupiter Swap API V2.
 - `/api/swap/execute` — forwards a transaction already signed by the connected wallet to Jupiter for execution.
 - `migrations/0001_live_trader.sql` — tables for Live Trader positions, live trade events, and live TP/SL preferences only. It has no simulator tables.
+- `migrations/0002_live_auth.sql` — one-time wallet-signature challenges and expiring Live Trader sessions.
+- `/api/live/auth/challenge` and `/api/live/auth/verify` — verify wallet ownership with a signed message (no transaction is requested).
+- `/api/live/data` — read and write only the authenticated wallet's Live Trader positions and history.
 
 ## Configure the Live Trader D1 database
 
@@ -20,11 +23,12 @@ The intended database is:
 
 1. In Cloudflare Dashboard, open **Workers & Pages → D1 SQL Database** and select `solana-paper-trader-db`.
 2. Open **Console / SQL Console**, paste the complete contents of `migrations/0001_live_trader.sql`, and run it once. The statements use `IF NOT EXISTS`, so rerunning the migration is safe.
-3. Open **Workers & Pages → your Pages project → Settings → Bindings** (the section may be called **D1 database bindings**).
-4. Add a D1 database binding with variable name **`LIVE_DB`** and select the database with ID `88596e1c-a46c-4fbe-b239-3f78f113b95f`.
-5. Save and redeploy the Pages project, then open `/api/health`. Confirm `liveDatabaseConfigured: true` and `checks.liveStorage: "D1-LIVE_DB-configured"`.
+3. In the same database console, paste and run the complete contents of `migrations/0002_live_auth.sql`. This second migration adds the wallet-authentication tables required by the new Live Trader API.
+4. Open **Workers & Pages → your Pages project → Settings → Bindings** (the section may be called **D1 database bindings**).
+5. Add a D1 database binding with variable name **`LIVE_DB`** and select the database with ID `88596e1c-a46c-4fbe-b239-3f78f113b95f`.
+6. Save and redeploy the Pages project, then open `/api/health`. Confirm `liveDatabaseConfigured: true` and `checks.liveStorage: "D1-LIVE_DB-configured"`.
 
-**Important:** adding the binding and tables establishes the database only. The UI does not yet persist live positions to D1 until the Live Trader persistence API is implemented and connected. Do not treat localStorage as durable cross-device storage yet.
+**Important:** the Live Trader UI now uses a wallet-signed message to authenticate access, then loads and saves confirmed live position/trade records through `/api/live/data`. A message signature is not a transaction and does not spend funds. The simulator continues to use its own browser `localStorage` and is never written to D1. Run both migrations before testing this flow.
 
 ## Configure live swaps
 
@@ -37,5 +41,5 @@ The intended database is:
 - Never put a wallet private key, seed phrase, RPC secret, or trading secret in `index.html`, browser storage, Git, or a public variable. `JUPITER_API_KEY` must be a Cloudflare Pages secret.
 - D1 tables are named `live_*` and are for real Live Trader tracking only. Do not write simulator balances, paper positions, paper history, or simulator settings into them.
 - The current live swap flow requires the user to sign transactions in Phantom or Solflare. A D1 binding stores data; it does not itself monitor prices or execute sales while the site is closed.
-- Any API that reads or mutates a wallet's records must authenticate ownership of that wallet, not trust a client-supplied public address alone.
+- Any API that reads or mutates a wallet's records must authenticate ownership of that wallet, not trust a client-supplied public address alone. Live Trader sessions expire after 12 hours and are kept in sessionStorage for the current browser tab.
 - The existing GitHub Pages simulator stays independent. D1/Pages Functions are available only on the Cloudflare Pages deployment.
