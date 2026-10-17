@@ -27,9 +27,10 @@ The app is a plain static site with index.html at the repository root. The workf
 ## Live Trading (opt-in, Cloudflare Pages only)
 
 - Open **Live Trading** and connect either Phantom or Solflare.
-- Select a token in Terminal, then choose a small buy size in SOL (initial cap: 0.25 SOL per buy).
+- Select a token in Terminal, then enter the buy size in USD (minimum $0.20, maximum equal to 0.25 SOL at the current live SOL/USD price). The app converts USD to SOL for the Jupiter swap and shows the live conversion before you buy.
 - The wallet must sign each swap. The app never receives private keys and does not auto-buy.
 - **Sell tracked balance** sells the token amount recorded from buys made through this browser. Check your wallet before trading; holdings bought elsewhere are not included in this local tracker.
+- **Send SOL / Withdraw** is a direct transfer from your connected wallet to the Solana address you enter. It is not a withdrawal from an internal platform balance or from simulator funds; your wallet signs the transfer and the app waits for on-chain confirmation.
 - Live swaps use Jupiter Swap API V2 through Cloudflare Pages Functions. GitHub Pages is static and cannot safely hold the API secret, so live swaps will not work on the GitHub Pages deployment.
 - To enable live swaps, deploy this repository to Cloudflare Pages and add a secret named `JUPITER_API_KEY` in the project's **Settings → Variables and Secrets**. Obtain the key from the official Jupiter developer portal. Never put the key in `index.html`, Git, or a public variable.
 - Test the functions on the Cloudflare deployment at `/api/swap/order` only through the app. Without the secret, the API returns a clear disabled message.
