@@ -46,28 +46,64 @@ export async function onRequestGet({ request, env }) {
     return json({ ok: false, error: "Invalid wallet public address." }, 400);
   }
 
-  const params = new URLSearchParams({ inputMint, outputMint, amount, taker });
-  let upstream;
-  try {
-    upstream = await fetch(JUPITER_ORIGIN + "/swap/v2/order?" + params.toString(), {
-      headers: { accept: "application/json", "x-api-key": env.JUPITER_API_KEY },
+  const headers = { accept: "application/json", "x-api-key": env.JUPITER_API_KEY };
+  async function requestOrder(orderParams) {
+    const response = await fetch(JUPITER_ORIGIN + "/swap/v2/order?" + orderParams.toString(), {
+      headers,
       redirect: "follow",
       signal: AbortSignal.timeout(25000)
     });
+    const body = await response.text();
+    if (body.length > 500000) throw new Error("Jupiter response exceeded the size limit.");
+    let data;
+    try { data = JSON.parse(body); } catch { throw new Error("Jupiter returned invalid JSON."); }
+    return { response, data };
+  }
+
+  let upstream, data;
+  try {
+    const params = new URLSearchParams({ inputMint, outputMint, amount, taker });
+    ({ response: upstream, data } = await requestOrder(params));
+
+    // Jupiter can reject tiny orders with aggregator errorCode 3 because the
+    // automatic gasless path has a minimum trade size. Retry once in manual
+    // mode with explicit slippage so the connected wallet can pay network fees.
+    // The transaction is still unsigned until the wallet explicitly approves it.
+    if (upstream.ok && typeof data.transaction === "string" && data.transaction === "" &&
+        Number(data.errorCode) === 3 && ["metis", "dflow", "okx"].includes(String(data.router || "").toLowerCase())) {
+      const manualParams = new URLSearchParams({ inputMint, outputMint, amount, taker, slippageBps: "100" });
+      const manual = await requestOrder(manualParams);
+      upstream = manual.response;
+      data = manual.data;
+      if (upstream.ok && typeof data.transaction === "string" && data.transaction && typeof data.requestId === "string") {
+        data.manualFeeFallback = true;
+        data.manualFeeFallbackNote = "Gasless minimum was not met. This order uses 1% slippage and requires the connected wallet to pay network fees. Review the quote and available SOL before signing.";
+      }
+    }
   } catch (error) {
     const diagnostic = String(error?.message || error?.name || "network request failed").slice(0, 180);
     return json({ ok: false, error: "Jupiter order service could not be reached.", diagnostic }, 502);
   }
 
-  const body = await upstream.text();
-  if (body.length > 500000) return json({ ok: false, error: "Jupiter response exceeded the size limit." }, 502);
-  let data;
-  try { data = JSON.parse(body); } catch { return json({ ok: false, error: "Jupiter returned invalid JSON." }, 502); }
   if (!upstream.ok) {
-    return json({ ok: false, error: data.error || data.errorMessage || "Jupiter order request failed (HTTP " + upstream.status + ")." }, upstream.status >= 400 && upstream.status < 500 ? 400 : 502);
+    return json({
+      ok: false,
+      error: data.error || data.errorMessage || "Jupiter order request failed (HTTP " + upstream.status + ").",
+      errorCode: data.errorCode ?? null,
+      router: data.router ?? null
+    }, upstream.status >= 400 && upstream.status < 500 ? 400 : 502);
   }
-  if (typeof data.transaction !== "string" || typeof data.requestId !== "string") {
-    return json({ ok: false, error: data.errorMessage || "Jupiter did not return a signable order." }, 502);
+  if (typeof data.transaction !== "string" || typeof data.requestId !== "string" || !data.transaction) {
+    const gaslessMinimum = Number(data.errorCode) === 3 && ["metis", "dflow", "okx"].includes(String(data.router || "").toLowerCase());
+    return json({
+      ok: false,
+      error: data.errorMessage || (gaslessMinimum
+        ? "Jupiter rejected this small order for gasless execution, and a normal wallet-paid order was not available. Check SOL for transaction fees and token-account rent, or increase the trade amount."
+        : "Jupiter did not return a signable order."),
+      errorCode: data.errorCode ?? null,
+      router: data.router ?? null,
+      manualFeeFallbackTried: gaslessMinimum
+    }, 502);
   }
   return json(data);
 }
