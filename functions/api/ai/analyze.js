@@ -54,8 +54,14 @@ export async function onRequestPost({ request, env }) {
 
   // Avoid spending inference quota on repeated clicks/scans. Reuse the last
   // successful result while the cooldown is active instead of failing the UI.
-  if (lastSuccessfulResponse && now - lastInferenceAt < MIN_INFERENCE_INTERVAL_MS) {
-    return respond(200, { ...lastSuccessfulResponse, cached: true, note: "Reused recent analysis to conserve AI quota." });
+  if (lastInferenceAt > 0 && now - lastInferenceAt < MIN_INFERENCE_INTERVAL_MS) {
+    if (lastSuccessfulResponse) {
+      return respond(200, { ...lastSuccessfulResponse, cached: true, note: "Reused recent analysis to conserve AI quota." });
+    }
+    return respond(429, {
+      error: "AI cooldown active after a recent attempt. Please wait before retrying.",
+      retryAfterSeconds: Math.ceil((MIN_INFERENCE_INTERVAL_MS - (now - lastInferenceAt)) / 1000),
+    });
   }
 
   const prompt = [
@@ -68,6 +74,8 @@ export async function onRequestPost({ request, env }) {
     JSON.stringify(items),
   ].join("\n\n");
 
+  // Start cooldown before inference so repeated failures cannot hammer the model.
+  lastInferenceAt = now;
   try {
     const result = await env.AI.run(MODEL, {
       messages: [
@@ -87,7 +95,6 @@ export async function onRequestPost({ request, env }) {
       generatedAt: new Date().toISOString(),
       cached: false,
     };
-    lastInferenceAt = now;
     lastSuccessfulResponse = data;
     responseCache.set(cacheKey, { time: now, data });
     if (responseCache.size > 24) {
