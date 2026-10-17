@@ -383,7 +383,7 @@ async function refreshOpenPositionPrices(){if(positionRefreshing||!state.positio
 
 const SOL_MINT='So11111111111111111111111111111111111111112';
 const liveState={provider:null,providerName:'',publicKey:'',tracked:{},positions:{},selling:new Map(),priceCheckBusy:false,selectedMint:'',markets:[],history:[],totalBoughtSol:0,totalBoughtUsd:0,realizedPnlUsd:0,aiScan:null,marketBusy:false,solUsd:0};
-const liveBot={approved:false,busy:false,lastAttemptAt:0};
+const liveBot={approved:false,busy:false,discovering:false,lastAttemptAt:0,markets:[],lastScanAt:0};
 try{const saved=JSON.parse(localStorage.getItem('solana-live-account-v1')||'{}');liveState.history=Array.isArray(saved.history)?saved.history:[];liveState.totalBoughtSol=Number(saved.totalBoughtSol)||0;liveState.totalBoughtUsd=Number(saved.totalBoughtUsd)||0;liveState.realizedPnlUsd=Number(saved.realizedPnlUsd)||0;liveState.aiScan=saved.aiScan||null;liveState.selectedMint=String(saved.selectedMint||'');liveState.solUsd=Number(saved.solUsd)||0;liveState.blacklist=Array.isArray(saved.blacklist)?saved.blacklist:[];}catch{}
 try{liveState.tracked=JSON.parse(localStorage.getItem('solana-live-tracked-v1')||'{}')||{};}catch{liveState.tracked={};}
 try{liveState.positions=JSON.parse(localStorage.getItem('solana-live-positions-v1')||'{}')||{};}catch{liveState.positions={};}
@@ -423,6 +423,20 @@ function updateLiveBotUi(message){
  if(stop)stop.disabled=!active;
  if(msg&&message)msg.textContent=message;
 }
+async function discoverLiveBotMarkets(){
+ const endpoints=['https://api.dexscreener.com/token-boosts/latest/v1','https://api.dexscreener.com/token-profiles/latest/v1'];
+ const lists=await Promise.all(endpoints.map(async url=>{const r=await fetchTimed(url,{cache:'no-store'});if(!r.ok)throw new Error('DexScreener HTTP '+r.status);const d=await r.json();return Array.isArray(d)?d:[];}));
+ const mints=[...new Set(lists.flat().filter(x=>x?.chainId==='solana'&&typeof x.tokenAddress==='string'&&x.tokenAddress!==SOL_MINT).map(x=>x.tokenAddress))].slice(0,60);
+ if(!mints.length)throw new Error('No Solana token profiles or boosted tokens returned.');
+ const pairs=[];
+ for(let i=0;i<mints.length;i+=20){
+  const batch=mints.slice(i,i+20),r=await fetchTimed('https://api.dexscreener.com/latest/dex/tokens/'+batch.join(','),{cache:'no-store'});
+  if(!r.ok)throw new Error('DexScreener token prices HTTP '+r.status);
+  const d=await r.json();if(Array.isArray(d.pairs))pairs.push(...d.pairs.filter(p=>p?.chainId==='solana'&&p?.baseToken?.address&&Number(p.priceUsd)>0));
+ }
+ const best=new Map();for(const p of pairs){const mint=p.baseToken.address,prev=best.get(mint);if(!prev||Number(p.liquidity?.usd||0)>Number(prev.liquidity?.usd||0))best.set(mint,p);}
+ return [...best.values()].sort((a,b)=>Number(b.liquidity?.usd||0)-Number(a.liquidity?.usd||0));
+}
 async function runLiveBotCycle(){
  if(!liveBot.approved||liveBot.busy||!document.body.classList.contains('live-mode'))return;
  if(!liveState.provider||!liveState.publicKey){updateLiveBotUi('Paused: connect Phantom or Solflare, then approve the bot again.');liveBot.approved=false;updateLiveBotUi();return;}
@@ -432,12 +446,17 @@ async function runLiveBotCycle(){
  if(!Number.isFinite(orderSol)||orderSol<0.001||orderSol>0.25){updateLiveBotUi('Order size must be between 0.001 and 0.25 SOL.');return;}
  const openMints=Object.keys(liveState.tracked).filter(m=>{try{return BigInt(String(liveState.tracked[m]||'0'))>0n&&(!liveState.positions[m]?.wallet||liveState.positions[m].wallet===liveState.publicKey);}catch{return false;}});
  if(openMints.length>=maxPositions){updateLiveBotUi('Waiting: max live positions reached ('+openMints.length+'/'+maxPositions+').');return;}
- if(!liveState.markets.length){updateLiveBotUi('Waiting for real live market results. Search for a token in the Live Terminal first.');return;}
- const candidates=liveState.markets.filter(m=>{
-  const mint=m?.baseToken?.address,price=Number(m?.priceUsd),liq=Number(m?.liquidity?.usd||0),vol=Number(m?.volume?.h24||0),change=Number(m?.priceChange?.h24||0),buys=Number(m?.txns?.h24?.buys||0),sells=Number(m?.txns?.h24?.sells||0);
-  return mint&&mint!==SOL_MINT&&price>0&&liq>=minLiq&&vol>=minVol&&change>0&&change<35&&buys>=sells&&!openMints.includes(mint)&&!(liveState.blacklist||[]).some(x=>x.mint===mint);
- }).sort((a,b)=>(Number(b.liquidity?.usd||0)*Math.max(0,Number(b.priceChange?.h24||0)))-(Number(a.liquidity?.usd||0)*Math.max(0,Number(a.priceChange?.h24||0))));
- if(!candidates.length){updateLiveBotUi('No token in the current real-market results meets the liquidity, volume, momentum and blacklist filters.');return;}
+ const qualifies=m=>{const mint=m?.baseToken?.address,price=Number(m?.priceUsd),liq=Number(m?.liquidity?.usd||0),vol=Number(m?.volume?.h24||0),change=Number(m?.priceChange?.h24||0),buys=Number(m?.txns?.h24?.buys||0),sells=Number(m?.txns?.h24?.sells||0);return mint&&mint!==SOL_MINT&&price>0&&liq>=minLiq&&vol>=minVol&&change>0&&change<35&&buys>=sells&&!openMints.includes(mint)&&!(liveState.blacklist||[]).some(x=>x.mint===mint);};
+ let pool=liveBot.markets.length&&Date.now()-liveBot.lastScanAt<60000?liveBot.markets:liveState.markets;
+ let candidates=pool.filter(qualifies).sort((a,b)=>(Number(b.liquidity?.usd||0)*Math.max(0,Number(b.priceChange?.h24||0)))-(Number(a.liquidity?.usd||0)*Math.max(0,Number(a.priceChange?.h24||0))));
+ if(!candidates.length){
+  if(liveBot.discovering){updateLiveBotUi('Scanning the real Solana token market…');return;}
+  liveBot.discovering=true;updateLiveBotUi('Searching current DexScreener Solana token profiles and boosted tokens for candidates…');
+  try{liveBot.markets=await discoverLiveBotMarkets();liveBot.lastScanAt=Date.now();pool=liveBot.markets;candidates=pool.filter(qualifies).sort((a,b)=>(Number(b.liquidity?.usd||0)*Math.max(0,Number(b.priceChange?.h24||0)))-(Number(a.liquidity?.usd||0)*Math.max(0,Number(a.priceChange?.h24||0))));}
+  catch(e){updateLiveBotUi('Live market discovery failed: '+(e?.message||'provider unavailable')+'. No trade was sent.');return;}
+  finally{liveBot.discovering=false;}
+ }
+ if(!candidates.length){updateLiveBotUi('No real token meets the liquidity, volume, positive momentum, buy/sell and blacklist filters. Bot will rescan automatically.');return;}
  const chosen=candidates[0],mint=chosen.baseToken.address;
  liveBot.busy=true;liveBot.lastAttemptAt=Date.now();
  $('liveSolAmount').value=String(orderSol);
