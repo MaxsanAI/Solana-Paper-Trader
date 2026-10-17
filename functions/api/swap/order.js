@@ -71,7 +71,7 @@ export async function onRequestGet({ request, env }) {
   return json(data);
 }
 
-export function onRequest({ request }) {
-  if (request.method !== "GET") return json({ ok: false, error: "Method not allowed." }, 405);
-  return onRequestGet({ request, env: arguments[0].env });
+export function onRequest(context) {
+  if (context.request.method !== "GET") return json({ ok: false, error: "Method not allowed." }, 405);
+  return onRequestGet(context);
 }
