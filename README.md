@@ -10,14 +10,14 @@ A Solana market terminal with a separate paper-trading simulator and an opt-in, 
 - Virtual wallet with configurable starting balance
 - Simulated buy/sell orders, position mark-to-market, trade history and CSV export
 - Per-position take-profit and stop-loss checks while the page is open and receiving market updates
-- Local browser storage; responsive dark UI; no build step or backend required
+- Local browser storage; responsive dark UI; no build step required for the simulator; Cloudflare Pages Functions are required for live swaps
 
 ## GitHub Pages
 The app is a plain static site with index.html at the repository root. The workflow in .github/workflows/static.yml deploys the site from main.
 
 ## Important limitations
 - The manual paper-bot is **not** a 24/7 hosted service. AI scans and simulated position management run only while the page is open and the browser is executing JavaScript. AI scans do not execute buys; each entry requires a manual TRIGGER BOT approval.
-- This is paper trading only. No real tokens are bought or sold, and no wallet is connected.
+- Paper mode remains simulation-only. Live swaps are a separate opt-in feature available only on Cloudflare Pages after the owner configures the Jupiter API secret and the user connects/signs with a wallet.
 - Liquidity, volume, age and momentum filters are simple heuristics, not a security audit or a guarantee against scams or losses.
 - Market data may be delayed, rate-limited or unavailable. Token prices and local history are not synchronized across devices.
 - TP/SL checks run only while the page is open and receiving market updates.
