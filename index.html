@@ -347,7 +347,20 @@ async function fetchTimed(url,options={},timeout=12000){
    const targetUrl=useCloudflareProxy&&url.startsWith('https://api.dexscreener.com/')
     ? '/api/market?path='+encodeURIComponent(url.slice('https://api.dexscreener.com'.length))
     : url;
-   const response=await fetch(targetUrl,{...options,signal:controller.signal});
+   let response=await fetch(targetUrl,{...options,signal:controller.signal});
+   // If the Cloudflare Pages proxy fails with a server error, retry the same public
+   // DexScreener endpoint directly in the browser. This preserves the GitHub Pages
+   // behavior and avoids losing live prices solely because the proxy is unavailable.
+   if(useCloudflareProxy&&targetUrl!==url&&response.status>=500){
+    const proxyStatus=response.status;
+    try{
+     const directResponse=await fetch(url,{...options,signal:controller.signal});
+     if(directResponse.ok)response=directResponse;
+     else throw Error('direct DexScreener HTTP '+directResponse.status);
+    }catch(fallbackError){
+     throw Error('Cloudflare market proxy HTTP '+proxyStatus+'; direct DexScreener fallback failed: '+(fallbackError?.message||'request failed'));
+    }
+   }
    if(response.status===429||response.status===503){
     const retrySeconds=Math.max(1,Math.min(300,Number(response.headers.get('retry-after'))||60));
     apiBackoffUntil=Date.now()+retrySeconds*1000;
