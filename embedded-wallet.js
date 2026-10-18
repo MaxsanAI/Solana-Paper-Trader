@@ -62,7 +62,7 @@ async function decryptSecret(record, password) {
   return new Uint8Array(raw);
 }
 function validatePassword(p) {
-  if (typeof p !== "string" || p.length < 12) throw new Error("Lozinka mora imati najmanje 12 karaktera.");
+  if (typeof p !== "string" || p.length < 12) throw new Error("Password must contain at least 12 characters.");
 }
 function setUnlockedUI(record) {
   $("embeddedWalletAuth").hidden = true;
@@ -73,7 +73,7 @@ function setUnlockedUI(record) {
   $("embeddedWalletLock").disabled = false;
   $("connectEmbeddedWalletBtn").disabled = false;
   $("connectEmbeddedWalletBtn").textContent = "Connect built-in wallet";
-  status("Novčanik je otključan samo u ovom tabu. Potpisivanje se obavlja lokalno.");
+  status("Wallet unlocked in this tab only. Signing happens locally.");
   refreshBalance();
   if (balanceTimer) clearInterval(balanceTimer);
   balanceTimer = setInterval(refreshBalance, 20000);
@@ -82,11 +82,11 @@ function setUnlockedUI(record) {
     publicKey: new PublicKey(publicKey),
     async connect() { if (!keypair) throw new Error("Wallet is locked."); return { publicKey: new PublicKey(publicKey) }; },
     async disconnect() { return true; },
-    async signTransaction(tx) { if (!keypair) throw new Error("Unlock the built-in wallet first."); if (!confirm("Dozvoli potpisivanje blockchain transakcije iz Live Trader-a? Proveri iznos, token i adresu u terminalu. Ova potvrda može da potroši sredstva.")) throw new Error("Potpisivanje je otkazano."); if (typeof tx.sign === "function") tx.sign([keypair]); else tx.partialSign(keypair); return tx; },
-    async signAllTransactions(txs) { if (!keypair) throw new Error("Unlock the built-in wallet first."); if (!confirm("Dozvoli potpisivanje "+txs.length+" blockchain transakcija? Proveri sve detalje; sredstva mogu biti potrošena.")) throw new Error("Potpisivanje je otkazano."); for (const tx of txs) { if (typeof tx.sign === "function") tx.sign([keypair]); else tx.partialSign(keypair); } return txs; },
+    async signTransaction(tx) { if (!keypair) throw new Error("Unlock the built-in wallet first."); if (!confirm("Allow Live Trader to sign this blockchain transaction? Verify the amount, token, and address in the terminal. This may spend funds.")) throw new Error("Signing was cancelled."); if (typeof tx.sign === "function") tx.sign([keypair]); else tx.partialSign(keypair); return tx; },
+    async signAllTransactions(txs) { if (!keypair) throw new Error("Unlock the built-in wallet first."); if (!confirm("Allow signing "+txs.length+" blockchain transactions? Verify every detail; funds may be spent.")) throw new Error("Potpisivanje je otkazano."); for (const tx of txs) { if (typeof tx.sign === "function") tx.sign([keypair]); else tx.partialSign(keypair); } return txs; },
     async signAndSendTransaction(tx) {
       if (!keypair) throw new Error("Unlock the built-in wallet first.");
-      if (!confirm("Dozvoli slanje blockchain transakcije iz ugrađenog novčanika? Proveri iznos i odredište.")) throw new Error("Transakcija je otkazana.");
+      if (!confirm("Allow the built-in wallet to send this blockchain transaction? Verify the amount and destination.")) throw new Error("Transaction was cancelled.");
       if (typeof tx.sign === "function") tx.sign([keypair]); else tx.partialSign(keypair);
       const connection = new Connection("https://api.mainnet-beta.solana.com", "confirmed");
       const signature = await connection.sendRawTransaction(tx.serialize());
@@ -106,15 +106,15 @@ async function refreshBalance() {
     const c = new Connection("https://api.mainnet-beta.solana.com", "confirmed");
     const lamports = await c.getBalance(new PublicKey(publicKey), "confirmed");
     $("embeddedWalletBalance").textContent = (lamports / LAMPORTS_PER_SOL).toFixed(6) + " SOL";
-  } catch { $("embeddedWalletBalance").textContent = "Nije dostupno"; }
+  } catch { $("embeddedWalletBalance").textContent = "Unavailable"; }
 }
 async function createWallet() {
   const username = $("embeddedWalletUsernameInput").value.trim();
   const password = $("embeddedWalletPassword").value;
   validatePassword(password);
-  if (!/^[a-zA-Z0-9_.-]{3,32}$/.test(username)) throw new Error("Korisničko ime: 3–32 slova, broja ili . _ -");
+  if (!/^[a-zA-Z0-9_.-]{3,32}$/.test(username)) throw new Error("Username must be 3–32 characters: letters, numbers, . _ -");
   const existing = await readRecord();
-  if (existing) throw new Error("Novčanik već postoji u ovom browseru. Prijavi se ili prvo izvezi rezervni ključ.");
+  if (existing) throw new Error("A wallet already exists in this browser. Log in or export your recovery key first.");
   const kp = Keypair.generate();
   const record = { ...(await encryptSecret(kp.secretKey, password)), username, address: kp.publicKey.toBase58(), createdAt: new Date().toISOString(), backupAcknowledged: false };
   await saveRecord(record);
@@ -124,45 +124,66 @@ async function createWallet() {
   // Display the backup secret only in this initial creation flow.
   $("embeddedWalletBackupSecret").textContent = bs58.encode(kp.secretKey);
   $("embeddedWalletBackup").hidden = false;
-  status("Novčanik je kreiran. Odmah sačuvaj rezervni ključ van ovog uređaja.", true);
+  status("Wallet created. Save your recovery key somewhere safe outside this device now.", true);
 }
 async function loginWallet() {
   const username = $("embeddedWalletUsernameInput").value.trim();
   const password = $("embeddedWalletPassword").value;
   const record = await readRecord();
-  if (!record || record.username.toLowerCase() !== username.toLowerCase()) throw new Error("Nema naloga sa tim korisničkim imenom u ovom browseru.");
+  if (!record || record.username.toLowerCase() !== username.toLowerCase()) throw new Error("No wallet with that username exists in this browser.");
   let raw;
-  try { raw = await decryptSecret(record, password); } catch { throw new Error("Pogrešna lozinka ili oštećen novčanik."); }
+  try { raw = await decryptSecret(record, password); } catch { throw new Error("Incorrect password or corrupted wallet."); }
   const kp = Keypair.fromSecretKey(raw);
-  if (kp.publicKey.toBase58() !== record.address) throw new Error("Provera adrese nije uspela.");
+  if (kp.publicKey.toBase58() !== record.address) throw new Error("Wallet address verification failed.");
   keypair = kp; publicKey = record.address;
   $("embeddedWalletPassword").value = "";
   setUnlockedUI(record);
 }
 async function exportKey() {
-  if (!keypair) throw new Error("Prvo otključaj novčanik.");
+  if (!keypair) throw new Error("Unlock the wallet first.");
   const secret = bs58.encode(keypair.secretKey);
   $("embeddedWalletBackupSecret").textContent = secret;
   $("embeddedWalletBackup").hidden = false;
-  status("Rezervni privatni ključ prikazan. Ne šalji ga nikome i ne čuvaj ga u cloud beleškama.", true);
+  status("Recovery key displayed. Never share it or store it in cloud notes.", true);
 }
 async function sendSol() {
   if (!keypair) throw new Error("Prvo otključaj novčanik.");
   const destination = new PublicKey($("embeddedWalletSendAddress").value.trim());
   const amount = Number($("embeddedWalletSendAmount").value);
-  if (!Number.isFinite(amount) || amount < 0.001 || amount > 10) throw new Error("Za početak je dozvoljeno 0.001–10 SOL po transferu.");
-  if (destination.equals(keypair.publicKey)) throw new Error("Adresa primaoca je ista kao tvoja.");
+  if (!Number.isFinite(amount) || amount < 0.001 || amount > 10) throw new Error("Transfers are limited to 0.001–10 SOL.");
+  if (destination.equals(keypair.publicKey)) throw new Error("The recipient address is your own address.");
   if (!confirm("Poslati " + amount + " SOL na " + destination.toBase58() + "? Transakcija se ne može poništiti.")) return;
   const connection = new Connection("https://api.mainnet-beta.solana.com", "confirmed");
   const latest = await connection.getLatestBlockhash("confirmed");
   const tx = new Transaction({ feePayer: keypair.publicKey, recentBlockhash: latest.blockhash }).add(SystemProgram.transfer({ fromPubkey: keypair.publicKey, toPubkey: destination, lamports: Math.floor(amount * LAMPORTS_PER_SOL) }));
   tx.partialSign(keypair);
   const signature = await connection.sendRawTransaction(tx.serialize());
-  status("Transakcija poslata; čeka se potvrda…");
+  status("Transaction submitted; waiting for confirmation…");
   await connection.confirmTransaction({ signature, blockhash: latest.blockhash, lastValidBlockHeight: latest.lastValidBlockHeight }, "confirmed");
-  $("embeddedWalletTxLink").innerHTML = '<a class="underline" target="_blank" rel="noopener noreferrer" href="https://solscan.io/tx/' + encodeURIComponent(signature) + '">Otvori transakciju u Solscan-u</a>';
-  status("Transfer potvrđen na Solana Mainnet-u. Proveri adresu i potpis transakcije.");
+  $("embeddedWalletTxLink").innerHTML = '<a class="underline" target="_blank" rel="noopener noreferrer" href="https://solscan.io/tx/' + encodeURIComponent(signature) + '">View transaction on Solscan</a>';
+  status("Transfer confirmed on Solana Mainnet. Verify the recipient and transaction signature.");
   await refreshBalance();
+}
+
+async function buySolWithMoonPay() {
+  if (!keypair || !publicKey) throw new Error("Unlock your wallet before buying SOL.");
+  const amount = Number($("embeddedWalletBuyAmount")?.value);
+  if (!Number.isFinite(amount) || amount < 20 || amount > 1000) throw new Error("Enter a purchase amount between $20 and $1,000.");
+  const button = $("embeddedWalletBuyBtn");
+  if (button) { button.disabled = true; button.textContent = "Preparing secure checkout…"; }
+  try {
+    const response = await fetch("/api/onramp/sign", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ walletAddress: publicKey, amountUsd: amount })
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.ok || !data.url) throw new Error(data.error || "MoonPay checkout is not configured yet. The site owner must add the MoonPay API keys in Cloudflare Pages settings.");
+    status("Opening MoonPay secure checkout. Review the final amount, fees, and recipient before paying.");
+    window.open(data.url, "_blank", "noopener,noreferrer");
+  } finally {
+    if (button) { button.disabled = false; button.textContent = "Buy SOL with MoonPay"; }
+  }
 }
 async function lockWallet() {
   keypair = null; publicKey = "";
@@ -174,18 +195,19 @@ async function lockWallet() {
   $("embeddedWalletLock").disabled = true;
   $("connectEmbeddedWalletBtn").disabled = true;
   $("liveWalletLabel").textContent = "Built-in wallet locked";
-  status("Novčanik zaključan. Šifrovani ključ ostaje u lokalnoj IndexedDB bazi.");
+  status("Wallet locked. The encrypted key remains in this browser's local IndexedDB storage.");
   window.dispatchEvent(new CustomEvent("embedded-wallet-locked"));
 }
-$("embeddedWalletCreateBtn").addEventListener("click", () => createWallet().catch(e => status(e.message || "Kreiranje nije uspelo.", true)));
-$("embeddedWalletLoginBtn").addEventListener("click", () => loginWallet().catch(e => status(e.message || "Prijava nije uspela.", true)));
+$("embeddedWalletCreateBtn").addEventListener("click", () => createWallet().catch(e => status(e.message || "Wallet creation failed.", true)));
+$("embeddedWalletLoginBtn").addEventListener("click", () => loginWallet().catch(e => status(e.message || "Login failed.", true)));
 $("embeddedWalletLock").addEventListener("click", lockWallet);
 $("embeddedWalletExportBtn").addEventListener("click", () => exportKey().catch(e => status(e.message, true)));
-$("embeddedWalletSendBtn").addEventListener("click", () => sendSol().catch(e => status(e.message || "Transfer nije uspeo.", true)));
+$("embeddedWalletSendBtn").addEventListener("click", () => sendSol().catch(e => status(e.message || "Transfer failed.", true)));
+$("embeddedWalletBuyBtn")?.addEventListener("click", () => buySolWithMoonPay().catch(e => status(e.message || "Could not open MoonPay checkout.", true)));
 $("embeddedWalletBackupAck").addEventListener("click", async () => {
   if (!$("embeddedWalletBackupAck").checked) return;
   const record = await readRecord();
-  if (record) { record.backupAcknowledged = true; await saveRecord(record); $("embeddedWalletBackup").hidden = true; status("Potvrđeno. Rezervni ključ sačuvaj na bezbednom mestu van browsera."); }
+  if (record) { record.backupAcknowledged = true; await saveRecord(record); $("embeddedWalletBackup").hidden = true; status("Confirmed. Keep your recovery key in a safe place outside this browser."); }
 });
 (async () => {
   try {
@@ -194,7 +216,7 @@ $("embeddedWalletBackupAck").addEventListener("click", async () => {
       $("embeddedWalletUsernameInput").value = record.username;
       $("embeddedWalletCreateBtn").disabled = true;
       $("embeddedWalletCreateBtn").textContent = "Wallet already created";
-      status("Pronađen je šifrovani novčanik. Unesi korisničko ime i lozinku za otključavanje.");
-    } else status("Napravi lični novčanik. Lozinka se ne šalje serveru i ne može se resetovati.");
-  } catch { status("IndexedDB nije dostupan. Otvori sajt preko HTTPS-a u modernom browseru.", true); }
+      status("Encrypted wallet found. Enter your username and password to unlock it.");
+    } else status("Create your personal wallet. Your password is never sent to the server and cannot be reset.");
+  } catch { status("IndexedDB is unavailable. Open this site over HTTPS in a modern browser.", true); }
 })();
