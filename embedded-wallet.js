@@ -330,11 +330,40 @@ $("embeddedWalletSendBtn").addEventListener("click", () => sendSol().catch(e => 
 $("embeddedWalletBuyBtn")?.addEventListener("click", () => buySolWithMoonPay().catch(e => status(e.message || "Could not open MoonPay checkout.", true)));
 $("embeddedWalletShowQrBtn")?.addEventListener("click", () => showReceiveQr().catch(e => { $("embeddedWalletScanStatus").textContent = e.message || "Could not create QR code."; }));
 $("embeddedWalletHideQrBtn")?.addEventListener("click", () => { $("embeddedWalletQrPanel").hidden = true; });
-$("embeddedWalletCopyAddress2")?.addEventListener("click", async () => {
-  if (!publicKey) return;
-  try { await navigator.clipboard.writeText(publicKey); status("Wallet address copied."); }
-  catch { status("Clipboard unavailable. Select and copy the address above.", true); }
-});
+async function copyWalletAddress() {
+  if (!publicKey) {
+    status("Unlock your wallet before copying its address.", true);
+    return;
+  }
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(publicKey);
+    } else {
+      const temp = document.createElement("textarea");
+      temp.value = publicKey;
+      temp.setAttribute("readonly", "");
+      temp.style.position = "fixed";
+      temp.style.opacity = "0";
+      temp.style.pointerEvents = "none";
+      document.body.appendChild(temp);
+      temp.select();
+      const copied = document.execCommand("copy");
+      temp.remove();
+      if (!copied) throw new Error("Clipboard permission was denied.");
+    }
+    status("Address copied to clipboard ✓");
+    const address = $("embeddedWalletAddress");
+    if (address) {
+      const previous = address.textContent;
+      address.textContent = "Copied ✓";
+      setTimeout(() => { if (address.textContent === "Copied ✓") address.textContent = previous; }, 1800);
+    }
+  } catch {
+    status("Could not copy automatically. Select the wallet address and copy it manually.", true);
+  }
+}
+$("embeddedWalletCopyAddress")?.addEventListener("click", copyWalletAddress);
+$("embeddedWalletCopyAddress2")?.addEventListener("click", copyWalletAddress);
 $("embeddedWalletStartScanBtn")?.addEventListener("click", () => startQrScanner());
 $("embeddedWalletStopScanBtn")?.addEventListener("click", () => stopQrScanner());
 $("embeddedWalletQrFile")?.addEventListener("change", event => {
