@@ -628,6 +628,7 @@ async function runLiveBotCycle(){
  if(!liveBot.approved||liveBot.busy)return;
  if(!liveState.provider||!liveState.publicKey){updateLiveBotUi('Paused: connect Phantom or Solflare, then approve the bot again.');liveBot.approved=false;updateLiveBotUi();return;}
  if(Date.now()-liveBot.lastAttemptAt<30000)return;
+ liveBot.lastAttemptAt=Date.now();
  const orderUsd=Number($('liveBotOrderSol')?.value||0.20),solUsd=Number(liveState.solUsd||livePrice(SOL_MINT)||0),maxPositions=Math.max(1,Math.min(5,Math.floor(Number($('liveBotMaxPositions')?.value||1))));
  const minLiq=Math.max(500,Number($('liveBotMinLiquidity')?.value||5000)),minVol=Math.max(100,Number($('liveBotMinVolume')?.value||1000));
  if(!Number.isFinite(orderUsd)||orderUsd<0.20||solUsd<=0||orderUsd>solUsd*0.25){updateLiveBotUi(solUsd>0?'Order size must be at least $0.20 and no more than '+money(solUsd*0.25)+' (0.25 SOL). Refresh live prices before retrying.':'Live SOL/USD price unavailable; refresh markets before approving the bot.');return;}
@@ -666,7 +667,7 @@ async function checkLiveTpSl(){if(liveState.priceCheckBusy||!liveState.publicKey
 $('liveAutoExit').addEventListener('change',()=>{const status=$('liveProtectionStatus');if(status)status.textContent=$('liveAutoExit').checked?'Live TP/SL monitoring enabled while this page is open. Wallet confirmation is required for each sell.':'Live TP/SL monitoring paused. Existing live positions are unchanged.';});
 $('liveTp').addEventListener('change',()=>{const cfg=liveTpSlValues();for(const p of Object.values(liveState.positions))p.tp=cfg.tp;saveLiveTracking();});
 $('liveSl').addEventListener('change',()=>{const cfg=liveTpSlValues();for(const p of Object.values(liveState.positions))p.sl=cfg.sl;saveLiveTracking();});
-setInterval(checkLiveTpSl,5000);document.addEventListener('visibilitychange',()=>{if(!document.hidden)checkLiveTpSl();});setInterval(()=>{if(document.body.classList.contains('live-mode'))renderLiveDashboard();},10000);
+setInterval(checkLiveTpSl,5000);setInterval(()=>{if(liveBot.approved)runLiveBotCycle();},5000);document.addEventListener('visibilitychange',()=>{if(!document.hidden){checkLiveTpSl();if(liveBot.approved)runLiveBotCycle();}});setInterval(()=>{if(document.body.classList.contains('live-mode'))renderLiveDashboard();},10000);
 const pageNames={terminal:'Terminal',wallet:'Paper wallet',bot:'Auto bot','ai-analysis':'AI Analysis',positions:'Open positions',history:'Trade history'};
 const livePageNames={terminal:'Terminal',wallet:'Wallet',bot:'Auto bot','ai-analysis':'AI Analysis',positions:'Open positions',history:'Trade history'};
 function showPage(page,updateHash=true){
