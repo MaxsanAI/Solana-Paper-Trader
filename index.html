@@ -672,5 +672,5 @@ render();renderBlacklist();syncBotControls();syncAlertsToggle();renderLiveDashbo
 })();
 </script>
 <script type="module" src="./embedded-wallet.js"></script>
-<script>document.getElementById('embeddedWalletCopyAddress')?.addEventListener('click',async()=>{const value=document.getElementById('embeddedWalletAddress')?.textContent||'';try{await navigator.clipboard.writeText(value);document.getElementById('embeddedWalletStatus').textContent='Adresa kopirana.';}catch{document.getElementById('embeddedWalletStatus').textContent='Kopiranje nije uspelo; označi adresu i kopiraj ručno.';}});</script>
+<script>document.getElementById('embeddedWalletCopyAddress')?.addEventListener('click',async()=>{const value=document.getElementById('embeddedWalletAddress')?.textContent||'';try{await navigator.clipboard.writeText(value);document.getElementById('embeddedWalletStatus').textContent='Address copied.';}catch{document.getElementById('embeddedWalletStatus').textContent='Could not copy. Select the address and copy it manually.';}});</script>
 </body></html>
