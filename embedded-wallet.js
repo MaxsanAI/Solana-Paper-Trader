@@ -3,6 +3,29 @@ import { Keypair, PublicKey, Connection, SystemProgram, Transaction, LAMPORTS_PE
 import bs58 from "https://esm.sh/bs58@6.0.0";
 
 const $ = (id) => document.getElementById(id);
+function openWalletModal() {
+  const modal = $("embeddedWalletModal");
+  if (!modal) return;
+  modal.hidden = false;
+  document.body.style.overflow = "hidden";
+  $("embeddedWalletCloseBtn")?.focus();
+}
+function closeWalletModal() {
+  const modal = $("embeddedWalletModal");
+  if (!modal) return;
+  modal.hidden = true;
+  document.body.style.overflow = "";
+  $("embeddedWalletTopBtn")?.focus();
+}
+$("embeddedWalletTopBtn")?.addEventListener("click", openWalletModal);
+$("embeddedWalletCloseBtn")?.addEventListener("click", closeWalletModal);
+$("embeddedWalletModal")?.addEventListener("click", event => {
+  if (event.target === $("embeddedWalletModal")) closeWalletModal();
+});
+document.addEventListener("keydown", event => {
+  if (event.key === "Escape" && $("embeddedWalletModal") && !$("embeddedWalletModal").hidden) closeWalletModal();
+});
+
 const DB_NAME = "solana-paper-trader-wallet-v1";
 const STORE = "wallet";
 const ITERATIONS = 600000;
@@ -68,11 +91,13 @@ function setUnlockedUI(record) {
   $("embeddedWalletAuth").hidden = true;
   $("embeddedWalletDetails").hidden = false;
   $("embeddedWalletAddress").textContent = publicKey;
-  $("embeddedWalletUsername").textContent = record.username;
+  $("embeddedWalletUsername").textContent = "";
   $("embeddedWalletBackup").hidden = !record.backupAcknowledged;
   $("embeddedWalletLock").disabled = false;
   $("connectEmbeddedWalletBtn").disabled = false;
+  $("connectEmbeddedWalletBtn").textContent = "Connect to Live Trading";
   $("connectEmbeddedWalletBtn").textContent = "Connect built-in wallet";
+  $("embeddedWalletTopLabel").textContent = "My Wallet · Connected";
   status("Wallet unlocked in this tab only. Signing happens locally.");
   refreshBalance();
   if (balanceTimer) clearInterval(balanceTimer);
@@ -200,6 +225,7 @@ async function lockWallet() {
   $("embeddedWalletDetails").hidden = true;
   $("embeddedWalletLock").disabled = true;
   $("connectEmbeddedWalletBtn").disabled = true;
+  $("embeddedWalletTopLabel").textContent = "My Wallet";
   $("liveWalletLabel").textContent = "Built-in wallet locked";
   status("Wallet locked. The encrypted key remains in this browser's local IndexedDB storage.");
   window.dispatchEvent(new CustomEvent("embedded-wallet-locked"));
