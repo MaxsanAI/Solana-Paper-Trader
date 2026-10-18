@@ -129,8 +129,9 @@ async function refreshBalance() {
   const address = publicKey;
   const output = $("embeddedWalletBalance");
   const endpoints = [
-    "https://api.mainnet-beta.solana.com",
-    "https://api.mainnet.solana.com"
+    "https://solana-rpc.publicnode.com",
+    "https://api.mainnet.solana.com",
+    "https://api.mainnet-beta.solana.com"
   ];
   let lastError = null;
   for (const endpoint of endpoints) {
@@ -164,7 +165,8 @@ async function refreshBalance() {
   }
   if (publicKey === address && output) {
     output.textContent = "Unavailable";
-    status("Could not read wallet balance from Solana RPC. Your funds are not moved by this check; try again shortly.", true);
+    const reason = lastError?.message || "Unknown RPC error";
+    status("Balance lookup failed: " + reason + ". This is a read error, not a transfer.", true);
   }
 }
 async function createWallet() {
