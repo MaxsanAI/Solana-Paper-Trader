@@ -188,7 +188,7 @@ body.live-mode.live-terminal-page #liveTradingSection .live-data-note{display:bl
 <div id="embeddedWalletModal" hidden role="dialog" aria-modal="true" aria-labelledby="embeddedWalletModalTitle" style="position:fixed;inset:0;z-index:1200;display:flex;align-items:flex-start;justify-content:center;padding:clamp(12px,3vw,32px);background:rgba(3,6,14,.82);backdrop-filter:blur(14px);overflow-y:auto">
 <div style="width:min(900px,100%);margin:auto;position:relative">
 <div class="flex items-center justify-between gap-3 mb-3 px-1"><div><div class="text-[10px] mint uppercase tracking-[.18em]">Self-custody · Solana Mainnet</div><h2 id="embeddedWalletModalTitle" class="text-xl sm:text-2xl font-black mt-1">My Crypto Wallet</h2><p class="text-xs muted mt-1">Your wallet, balance, transfers and SOL purchases in one place.</p></div><button id="embeddedWalletCloseBtn" type="button" class="btn" aria-label="Close wallet" style="width:44px;height:44px;font-size:22px;border-radius:14px">×</button></div>
-<section id="embeddedWalletCard" data-live-page="wallet" class="rounded-xl p-4 mb-4" style="background:linear-gradient(135deg,rgba(14,25,42,.96),rgba(18,14,38,.96));border:1px solid rgba(101,245,208,.22);box-shadow:0 16px 45px rgba(0,0,0,.18)">
+<section id="embeddedWalletCard" class="rounded-xl p-4 mb-4" style="background:linear-gradient(135deg,rgba(14,25,42,.96),rgba(18,14,38,.96));border:1px solid rgba(101,245,208,.22);box-shadow:0 16px 45px rgba(0,0,0,.18)">
 <div class="flex flex-wrap items-start justify-between gap-3 mb-4"><div><div class="text-xs mint uppercase tracking-[.14em]">Personal self-custody wallet</div><h3 class="text-lg font-black mt-1">Built-in Solana Wallet</h3><p class="text-xs muted mt-1">Your private key is encrypted on this device and is never sent to the server.</p></div><span class="pill">Solana Mainnet</span></div>
 <div id="embeddedWalletAuth" class="grid grid-cols-1 md:grid-cols-3 gap-3">
 <div><label class="text-xs muted block mb-1" for="embeddedWalletUsernameInput">Username</label><input id="embeddedWalletUsernameInput" class="field" autocomplete="username" maxlength="32" placeholder="e.g. maxtrader"></div>
@@ -197,7 +197,7 @@ body.live-mode.live-terminal-page #liveTradingSection .live-data-note{display:bl
 </div>
 <div id="embeddedWalletDetails" hidden>
 <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-<div class="rounded-xl p-3" style="background:rgba(4,9,18,.45);border:1px solid var(--line)"><div class="text-[10px] muted uppercase">Owner</div><div id="embeddedWalletUsername" class="font-bold mt-1 break-all">—</div></div>
+<div class="rounded-xl p-3" style="background:rgba(4,9,18,.45);border:1px solid var(--line)"><div class="text-[10px] muted uppercase">Wallet status</div><div id="embeddedWalletUsername" class="font-bold mt-1 break-all">Locked / Unlocked</div></div>
 <div class="rounded-xl p-3" style="background:rgba(4,9,18,.45);border:1px solid var(--line)"><div class="text-[10px] muted uppercase">SOL balance</div><div id="embeddedWalletBalance" class="text-xl font-black mt-1">Checking…</div></div>
 <div class="rounded-xl p-3" style="background:rgba(4,9,18,.45);border:1px solid var(--line)"><div class="text-[10px] muted uppercase">Wallet address</div><div id="embeddedWalletAddress" class="text-xs break-all mt-1">—</div><button id="embeddedWalletCopyAddress" type="button" class="btn mt-2">Copy address</button></div>
 </div>
