@@ -170,6 +170,8 @@ async function buySolWithMoonPay() {
   const amount = Number($("embeddedWalletBuyAmount")?.value);
   if (!Number.isFinite(amount) || amount < 20 || amount > 1000) throw new Error("Enter a purchase amount between $20 and $1,000.");
   const button = $("embeddedWalletBuyBtn");
+  const popup = window.open("about:blank", "_blank");
+  if (!popup) throw new Error("Allow pop-ups for this site to open the secure payment provider.");
   if (button) { button.disabled = true; button.textContent = "Preparing secure checkout…"; }
   try {
     const response = await fetch("/api/onramp/sign", {
@@ -180,7 +182,11 @@ async function buySolWithMoonPay() {
     const data = await response.json().catch(() => ({}));
     if (!response.ok || !data.ok || !data.url) throw new Error(data.error || "MoonPay checkout is not configured yet. The site owner must add the MoonPay API keys in Cloudflare Pages settings.");
     status("Opening MoonPay secure checkout. Review the final amount, fees, and recipient before paying.");
-    window.open(data.url, "_blank", "noopener,noreferrer");
+    popup.opener = null;
+    popup.location.href = data.url;
+  } catch (error) {
+    if (popup && !popup.closed) popup.close();
+    throw error;
   } finally {
     if (button) { button.disabled = false; button.textContent = "Buy SOL with MoonPay"; }
   }
