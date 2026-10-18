@@ -201,6 +201,26 @@ body.live-mode.live-terminal-page #liveTradingSection .live-data-note{display:bl
 <div class="rounded-xl p-3" style="background:rgba(4,9,18,.45);border:1px solid var(--line)"><div class="text-[10px] muted uppercase">SOL balance</div><div id="embeddedWalletBalance" class="text-xl font-black mt-1">Checking…</div></div>
 <div class="rounded-xl p-3" style="background:rgba(4,9,18,.45);border:1px solid var(--line)"><div class="text-[10px] muted uppercase">Wallet address</div><div id="embeddedWalletAddress" class="text-xs break-all mt-1">—</div><button id="embeddedWalletCopyAddress" type="button" class="btn mt-2">Copy address</button></div>
 </div>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+<div class="rounded-xl p-4" style="background:rgba(4,9,18,.45);border:1px solid rgba(101,245,208,.2)">
+<div class="text-sm font-black">Receive SOL</div><p class="text-xs muted mt-1">Show your public address as a QR code so another wallet can scan it.</p>
+<div class="flex flex-wrap gap-2 mt-3"><button id="embeddedWalletShowQrBtn" class="btn btn-buy" type="button">Show receive QR</button><button id="embeddedWalletCopyAddress2" class="btn" type="button">Copy address</button></div>
+<div id="embeddedWalletQrPanel" hidden class="mt-3 text-center">
+<canvas id="embeddedWalletQrCanvas" width="280" height="280" aria-label="QR code for receiving SOL" style="width:min(280px,100%);height:auto;margin:0 auto;background:white;border-radius:14px;padding:10px"></canvas>
+<p class="text-xs muted mt-2">Solana Mainnet · Verify the address before sending funds.</p>
+<button id="embeddedWalletHideQrBtn" class="btn mt-2" type="button">Hide QR</button>
+</div>
+</div>
+<div class="rounded-xl p-4" style="background:rgba(4,9,18,.45);border:1px solid rgba(167,149,255,.25)">
+<div class="text-sm font-black">Scan recipient QR</div><p class="text-xs muted mt-1">Use your camera on mobile/desktop, or choose an image containing a QR code.</p>
+<div class="flex flex-wrap gap-2 mt-3"><button id="embeddedWalletStartScanBtn" class="btn btn-buy" type="button">Open camera scanner</button><label class="btn cursor-pointer" for="embeddedWalletQrFile">Choose QR image</label><input id="embeddedWalletQrFile" type="file" accept="image/*" hidden></div>
+<div id="embeddedWalletScannerPanel" hidden class="mt-3">
+<video id="embeddedWalletScannerVideo" playsinline muted style="display:block;width:100%;max-height:280px;background:#050812;border-radius:12px;object-fit:contain"></video>
+<div class="flex flex-wrap gap-2 mt-2"><button id="embeddedWalletStopScanBtn" class="btn" type="button">Stop camera</button></div>
+</div>
+<p id="embeddedWalletScanStatus" class="text-xs muted mt-2" role="status" aria-live="polite">Scanned addresses are checked before they are placed in the recipient field.</p>
+</div>
+</div>
 <div class="rounded-xl p-4 mt-3" style="background:linear-gradient(135deg,rgba(101,245,208,.07),rgba(167,149,255,.07));border:1px solid rgba(101,245,208,.2)">
 <div class="flex flex-wrap items-center justify-between gap-2"><div><div class="text-sm font-black">Buy SOL with a card</div><p class="text-xs muted mt-1">Buy SOL directly to this wallet through MoonPay. Payment processing and identity checks are handled by MoonPay.</p></div><span class="pill">Third-party checkout</span></div>
 <div class="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-2 mt-3"><div><label class="text-xs muted block mb-1" for="embeddedWalletBuyAmount">Purchase amount (USD)</label><input id="embeddedWalletBuyAmount" class="field" type="number" min="20" max="1000" step="5" value="50" inputmode="decimal"></div><div class="flex items-end"><button id="embeddedWalletBuyBtn" class="btn btn-buy w-full" type="button">Buy SOL with MoonPay</button></div></div>
