@@ -82,11 +82,11 @@ function setUnlockedUI(record) {
     publicKey: new PublicKey(publicKey),
     async connect() { if (!keypair) throw new Error("Wallet is locked."); return { publicKey: new PublicKey(publicKey) }; },
     async disconnect() { return true; },
-    async signTransaction(tx) { if (!keypair) throw new Error("Unlock the built-in wallet first."); tx.partialSign(keypair); return tx; },
-    async signAllTransactions(txs) { if (!keypair) throw new Error("Unlock the built-in wallet first."); for (const tx of txs) tx.partialSign(keypair); return txs; },
+    async signTransaction(tx) { if (!keypair) throw new Error("Unlock the built-in wallet first."); if (typeof tx.sign === "function") tx.sign([keypair]); else tx.partialSign(keypair); return tx; },
+    async signAllTransactions(txs) { if (!keypair) throw new Error("Unlock the built-in wallet first."); for (const tx of txs) { if (typeof tx.sign === "function") tx.sign([keypair]); else tx.partialSign(keypair); } return txs; },
     async signAndSendTransaction(tx) {
       if (!keypair) throw new Error("Unlock the built-in wallet first.");
-      tx.partialSign(keypair);
+      if (typeof tx.sign === "function") tx.sign([keypair]); else tx.partialSign(keypair);
       const connection = new Connection("https://api.mainnet-beta.solana.com", "confirmed");
       const signature = await connection.sendRawTransaction(tx.serialize());
       return { signature };
@@ -182,6 +182,7 @@ $("embeddedWalletLock").addEventListener("click", lockWallet);
 $("embeddedWalletExportBtn").addEventListener("click", () => exportKey().catch(e => status(e.message, true)));
 $("embeddedWalletSendBtn").addEventListener("click", () => sendSol().catch(e => status(e.message || "Transfer nije uspeo.", true)));
 $("embeddedWalletBackupAck").addEventListener("click", async () => {
+  if (!$("embeddedWalletBackupAck").checked) return;
   const record = await readRecord();
   if (record) { record.backupAcknowledged = true; await saveRecord(record); $("embeddedWalletBackup").hidden = true; status("Potvrđeno. Rezervni ključ sačuvaj na bezbednom mestu van browsera."); }
 });
