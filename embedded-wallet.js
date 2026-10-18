@@ -82,10 +82,11 @@ function setUnlockedUI(record) {
     publicKey: new PublicKey(publicKey),
     async connect() { if (!keypair) throw new Error("Wallet is locked."); return { publicKey: new PublicKey(publicKey) }; },
     async disconnect() { return true; },
-    async signTransaction(tx) { if (!keypair) throw new Error("Unlock the built-in wallet first."); if (typeof tx.sign === "function") tx.sign([keypair]); else tx.partialSign(keypair); return tx; },
-    async signAllTransactions(txs) { if (!keypair) throw new Error("Unlock the built-in wallet first."); for (const tx of txs) { if (typeof tx.sign === "function") tx.sign([keypair]); else tx.partialSign(keypair); } return txs; },
+    async signTransaction(tx) { if (!keypair) throw new Error("Unlock the built-in wallet first."); if (!confirm("Dozvoli potpisivanje blockchain transakcije iz Live Trader-a? Proveri iznos, token i adresu u terminalu. Ova potvrda može da potroši sredstva.")) throw new Error("Potpisivanje je otkazano."); if (typeof tx.sign === "function") tx.sign([keypair]); else tx.partialSign(keypair); return tx; },
+    async signAllTransactions(txs) { if (!keypair) throw new Error("Unlock the built-in wallet first."); if (!confirm("Dozvoli potpisivanje "+txs.length+" blockchain transakcija? Proveri sve detalje; sredstva mogu biti potrošena.")) throw new Error("Potpisivanje je otkazano."); for (const tx of txs) { if (typeof tx.sign === "function") tx.sign([keypair]); else tx.partialSign(keypair); } return txs; },
     async signAndSendTransaction(tx) {
       if (!keypair) throw new Error("Unlock the built-in wallet first.");
+      if (!confirm("Dozvoli slanje blockchain transakcije iz ugrađenog novčanika? Proveri iznos i odredište.")) throw new Error("Transakcija je otkazana.");
       if (typeof tx.sign === "function") tx.sign([keypair]); else tx.partialSign(keypair);
       const connection = new Connection("https://api.mainnet-beta.solana.com", "confirmed");
       const signature = await connection.sendRawTransaction(tx.serialize());
