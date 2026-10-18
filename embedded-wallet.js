@@ -147,12 +147,12 @@ async function exportKey() {
   status("Recovery key displayed. Never share it or store it in cloud notes.", true);
 }
 async function sendSol() {
-  if (!keypair) throw new Error("Prvo otključaj novčanik.");
+  if (!keypair) throw new Error("Unlock the wallet first.");
   const destination = new PublicKey($("embeddedWalletSendAddress").value.trim());
   const amount = Number($("embeddedWalletSendAmount").value);
   if (!Number.isFinite(amount) || amount < 0.001 || amount > 10) throw new Error("Transfers are limited to 0.001–10 SOL.");
   if (destination.equals(keypair.publicKey)) throw new Error("The recipient address is your own address.");
-  if (!confirm("Poslati " + amount + " SOL na " + destination.toBase58() + "? Transakcija se ne može poništiti.")) return;
+  if (!confirm("Send " + amount + " SOL to " + destination.toBase58() + "? This transaction cannot be reversed.")) return;
   const connection = new Connection("https://api.mainnet-beta.solana.com", "confirmed");
   const latest = await connection.getLatestBlockhash("confirmed");
   const tx = new Transaction({ feePayer: keypair.publicKey, recentBlockhash: latest.blockhash }).add(SystemProgram.transfer({ fromPubkey: keypair.publicKey, toPubkey: destination, lamports: Math.floor(amount * LAMPORTS_PER_SOL) }));
