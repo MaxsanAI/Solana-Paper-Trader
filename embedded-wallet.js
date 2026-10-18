@@ -94,8 +94,8 @@ function setUnlockedUI(record) {
     },
     async signMessage(message) {
       if (!keypair) throw new Error("Unlock the built-in wallet first.");
-      const { sign } = await import("https://esm.sh/@noble/ed25519@2.2.3");
-      return sign(message, keypair.secretKey.slice(0, 32));
+      const { signAsync } = await import("https://esm.sh/@noble/ed25519@2.2.3");
+      return signAsync(message, keypair.secretKey.slice(0, 32));
     }
   };
   window.dispatchEvent(new CustomEvent("embedded-wallet-ready", { detail: { publicKey } }));
