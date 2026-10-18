@@ -190,6 +190,98 @@ async function sendSol() {
   await refreshBalance();
 }
 
+let qrCodeModulePromise = null;
+let qrScannerReader = null;
+let qrScannerControls = null;
+function validSolanaAddress(value) {
+  try {
+    const key = new PublicKey(String(value || "").trim());
+    return PublicKey.isOnCurve(key.toBytes()) && key.toBase58() === String(value || "").trim();
+  } catch { return false; }
+}
+async function showReceiveQr() {
+  if (!publicKey || !keypair) throw new Error("Unlock your wallet first.");
+  const panel = $("embeddedWalletQrPanel");
+  panel.hidden = false;
+  if (!qrCodeModulePromise) qrCodeModulePromise = import("https://esm.sh/qrcode@1.5.4");
+  const mod = await qrCodeModulePromise;
+  const QRCode = mod.default || mod;
+  await QRCode.toCanvas($("embeddedWalletQrCanvas"), publicKey, {
+    errorCorrectionLevel: "H", margin: 2, width: 280,
+    color: { dark: "#101624", light: "#ffffff" }
+  });
+}
+async function stopQrScanner() {
+  try { if (qrScannerControls) qrScannerControls.stop(); } catch {}
+  qrScannerControls = null;
+  try { if (qrScannerReader && typeof qrScannerReader.reset === "function") qrScannerReader.reset(); } catch {}
+  qrScannerReader = null;
+  const video = $("embeddedWalletScannerVideo");
+  if (video && video.srcObject) {
+    for (const track of video.srcObject.getTracks()) track.stop();
+    video.srcObject = null;
+  }
+  $("embeddedWalletScannerPanel").hidden = true;
+}
+function useScannedAddress(raw) {
+  const value = String(raw || "").trim();
+  let address = value;
+  try {
+    if (/^solana:/i.test(value)) {
+      const withoutScheme = value.replace(/^solana:/i, "");
+      address = withoutScheme.split(/[?&]/)[0];
+    } else if (/^[a-z][a-z0-9+.-]*:\/\//i.test(value)) {
+      throw new Error("This QR code is not a Solana address.");
+    }
+    if (!validSolanaAddress(address)) throw new Error("QR scanned, but it does not contain a valid Solana wallet address.");
+    $("embeddedWalletSendAddress").value = address;
+    $("embeddedWalletScanStatus").textContent = "Valid Solana address filled in. Check the recipient carefully before sending.";
+    $("embeddedWalletSendAddress").focus();
+    stopQrScanner();
+  } catch (error) {
+    $("embeddedWalletScanStatus").textContent = error.message || "Could not read a valid Solana address.";
+    $("embeddedWalletScanStatus").style.color = "#ff789b";
+  }
+}
+async function startQrScanner() {
+  const panel = $("embeddedWalletScannerPanel");
+  panel.hidden = false;
+  $("embeddedWalletScanStatus").style.color = "";
+  $("embeddedWalletScanStatus").textContent = "Requesting camera permission…";
+  try {
+    const mod = await import("https://esm.sh/@zxing/browser@0.1.5");
+    const Reader = mod.BrowserMultiFormatReader;
+    qrScannerReader = new Reader();
+    qrScannerControls = await qrScannerReader.decodeFromVideoDevice(undefined, $("embeddedWalletScannerVideo"), (result, error) => {
+      if (result) useScannedAddress(result.getText());
+    });
+    $("embeddedWalletScanStatus").textContent = "Camera active. Hold a Solana address QR code in view.";
+  } catch (error) {
+    await stopQrScanner();
+    $("embeddedWalletScanStatus").style.color = "#ff789b";
+    $("embeddedWalletScanStatus").textContent = "Camera unavailable. Allow camera access on HTTPS, or choose a QR image instead.";
+  }
+}
+async function scanQrImage(file) {
+  if (!file) return;
+  $("embeddedWalletScanStatus").style.color = "";
+  $("embeddedWalletScanStatus").textContent = "Reading QR image…";
+  let url = null;
+  try {
+    const mod = await import("https://esm.sh/@zxing/browser@0.1.5");
+    const Reader = mod.BrowserMultiFormatReader;
+    const reader = new Reader();
+    url = URL.createObjectURL(file);
+    const result = await reader.decodeFromImageUrl(url);
+    useScannedAddress(result.getText());
+    try { reader.reset(); } catch {}
+  } catch {
+    $("embeddedWalletScanStatus").style.color = "#ff789b";
+    $("embeddedWalletScanStatus").textContent = "Could not read a QR code from that image. Try a clearer, cropped image.";
+  } finally {
+    if (url) URL.revokeObjectURL(url);
+  }
+}
 async function buySolWithMoonPay() {
   if (!keypair || !publicKey) throw new Error("Unlock your wallet before buying SOL.");
   const amount = Number($("embeddedWalletBuyAmount")?.value);
@@ -237,6 +329,22 @@ $("embeddedWalletLock").addEventListener("click", lockWallet);
 $("embeddedWalletExportBtn").addEventListener("click", () => exportKey().catch(e => status(e.message, true)));
 $("embeddedWalletSendBtn").addEventListener("click", () => sendSol().catch(e => status(e.message || "Transfer failed.", true)));
 $("embeddedWalletBuyBtn")?.addEventListener("click", () => buySolWithMoonPay().catch(e => status(e.message || "Could not open MoonPay checkout.", true)));
+$("embeddedWalletShowQrBtn")?.addEventListener("click", () => showReceiveQr().catch(e => { $("embeddedWalletScanStatus").textContent = e.message || "Could not create QR code."; }));
+$("embeddedWalletHideQrBtn")?.addEventListener("click", () => { $("embeddedWalletQrPanel").hidden = true; });
+$("embeddedWalletCopyAddress2")?.addEventListener("click", async () => {
+  if (!publicKey) return;
+  try { await navigator.clipboard.writeText(publicKey); status("Wallet address copied."); }
+  catch { status("Clipboard unavailable. Select and copy the address above.", true); }
+});
+$("embeddedWalletStartScanBtn")?.addEventListener("click", () => startQrScanner());
+$("embeddedWalletStopScanBtn")?.addEventListener("click", () => stopQrScanner());
+$("embeddedWalletQrFile")?.addEventListener("change", event => {
+  const file = event.target.files && event.target.files[0];
+  scanQrImage(file);
+  event.target.value = "";
+});
+window.addEventListener("pagehide", () => { stopQrScanner(); });
+
 $("embeddedWalletBackupAck").addEventListener("click", async () => {
   if (!$("embeddedWalletBackupAck").checked) return;
   const record = await readRecord();
