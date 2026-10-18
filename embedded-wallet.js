@@ -96,8 +96,7 @@ function setUnlockedUI(record) {
   $("embeddedWalletLock").disabled = false;
   $("connectEmbeddedWalletBtn").disabled = false;
   $("connectEmbeddedWalletBtn").textContent = "Connect to Live Trading";
-  $("connectEmbeddedWalletBtn").textContent = "Connect built-in wallet";
-  $("embeddedWalletTopLabel").textContent = "My Wallet · Connected";
+  $("embeddedWalletTopLabel").textContent = "My Wallet · Unlocked";
   status("Wallet unlocked in this tab only. Signing happens locally.");
   refreshBalance();
   if (balanceTimer) clearInterval(balanceTimer);
