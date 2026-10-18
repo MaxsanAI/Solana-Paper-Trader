@@ -31,29 +31,69 @@ export async function onRequestPost({ request, env }) {
     return json({ ok: false, error: "Invalid Jupiter request ID." }, 400);
   }
 
-  let upstream;
-  try {
-    upstream = await fetch(JUPITER_ORIGIN + "/swap/v2/execute", {
-      method: "POST",
-      headers: {
-        accept: "application/json",
-        "content-type": "application/json",
-        "x-api-key": env.JUPITER_API_KEY
-      },
-      body: JSON.stringify({ signedTransaction, requestId }),
-      redirect: "error",
-      signal: AbortSignal.timeout(20000)
-    });
-  } catch {
-    return json({ ok: false, error: "Jupiter execution service is temporarily unreachable. Check wallet activity before retrying." }, 502);
+  // Jupiter documents retries with the same requestId and signedTransaction as
+  // the recovery path for a request that fails mid-flight. Never create a new
+  // order or change the signed payload while recovering an uncertain execution.
+  const payload = JSON.stringify({ signedTransaction, requestId });
+  let upstream = null;
+  let lastNetworkError = "";
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      upstream = await fetch(JUPITER_ORIGIN + "/swap/v2/execute", {
+        method: "POST",
+        headers: {
+          accept: "application/json",
+          "content-type": "application/json",
+          "x-api-key": env.JUPITER_API_KEY
+        },
+        body: payload,
+        redirect: "error",
+        signal: AbortSignal.timeout(12000)
+      });
+      // A 5xx may mean Jupiter failed while processing the request. Retry once
+      // with the exact same request ID and signed transaction for status recovery.
+      if (upstream.status < 500 || attempt === 2) break;
+      lastNetworkError = "Jupiter returned HTTP " + upstream.status;
+    } catch (error) {
+      lastNetworkError = String(error?.name || error?.message || "network request failed").slice(0, 100);
+      if (attempt === 2) {
+        return json({
+          ok: false,
+          error: "Jupiter did not return an execution result after a safe recovery retry. Check wallet activity before starting a new order.",
+          diagnostic: lastNetworkError,
+          retryAttempted: true
+        }, 502);
+      }
+    }
+  }
+
+  if (!upstream) {
+    return json({
+      ok: false,
+      error: "Jupiter did not return an execution result. Check wallet activity before starting a new order.",
+      diagnostic: lastNetworkError || "No response from Jupiter",
+      retryAttempted: true
+    }, 502);
   }
 
   const body = await upstream.text();
-  if (body.length > 100000) return json({ ok: false, error: "Jupiter execution response exceeded the size limit." }, 502);
+  if (body.length > 100000) return json({ ok: false, error: "Jupiter execution response exceeded the size limit. Check wallet activity before retrying." }, 502);
   let data;
-  try { data = JSON.parse(body); } catch { return json({ ok: false, error: "Jupiter returned invalid execution data." }, 502); }
+  try { data = JSON.parse(body); } catch {
+    return json({
+      ok: false,
+      error: "Jupiter returned an unreadable execution result. Check wallet activity before starting a new order.",
+      httpStatus: upstream.status
+    }, 502);
+  }
   if (!upstream.ok) {
-    return json({ ok: false, error: data.error || data.errorMessage || "Jupiter execution failed (HTTP " + upstream.status + ")." }, upstream.status >= 400 && upstream.status < 500 ? 400 : 502);
+    return json({
+      ok: false,
+      error: data.error || data.errorMessage || "Jupiter execution failed (HTTP " + upstream.status + ").",
+      code: data.code ?? null,
+      signature: data.signature ?? null,
+      status: data.status ?? null
+    }, upstream.status >= 400 && upstream.status < 500 ? 400 : 502);
   }
   return json(data);
 }
