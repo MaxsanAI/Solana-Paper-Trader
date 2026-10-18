@@ -704,6 +704,6 @@ render();renderBlacklist();syncBotControls();syncAlertsToggle();renderLiveDashbo
  window.addEventListener('hashchange',function(){switchPage(location.hash.slice(1)||'landing',false);});switchPage(location.hash.slice(1)||'landing',false);
 })();
 </script>
-<script type="module" src="./embedded-wallet.js"></script>
+<script type="module" src="./embedded-wallet.js?v=b9907aa"></script>
 <script>document.getElementById('embeddedWalletCopyAddress')?.addEventListener('click',async()=>{const value=document.getElementById('embeddedWalletAddress')?.textContent||'';try{await navigator.clipboard.writeText(value);document.getElementById('embeddedWalletStatus').textContent='Address copied.';}catch{document.getElementById('embeddedWalletStatus').textContent='Could not copy. Select the address and copy it manually.';}});</script>
 </body></html>
