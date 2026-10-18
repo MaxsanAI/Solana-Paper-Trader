@@ -43,3 +43,16 @@ The intended database is:
 - The current live swap flow requires the user to sign transactions in Phantom or Solflare. A D1 binding stores data; it does not itself monitor prices or execute sales while the site is closed.
 - Any API that reads or mutates a wallet's records must authenticate ownership of that wallet, not trust a client-supplied public address alone. Live Trader sessions expire after 12 hours and are kept in sessionStorage for the current browser tab.
 - The existing GitHub Pages simulator stays independent. D1/Pages Functions are available only on the Cloudflare Pages deployment.
+
+
+## MoonPay SOL card purchases
+
+The built-in wallet includes a card-purchase panel that routes users to MoonPay checkout. Live purchases are **not active until the site owner has a MoonPay partner account and approved production access**.
+
+In the Cloudflare Pages project settings, add these environment variables (use **Secrets** for the secret key):
+
+- `MOONPAY_PUBLIC_KEY` — MoonPay publishable key (`pk_test_...` for sandbox or `pk_live_...` for production).
+- `MOONPAY_SECRET_KEY` — MoonPay secret key. Keep this server-side only; never place it in HTML or JavaScript.
+- `MOONPAY_ENV` — set to `sandbox` for testing. For approved production keys, use `production` or leave it unset.
+
+Then redeploy the Cloudflare Pages project. The function at `/api/onramp/sign` signs the checkout URL server-side so the user's embedded wallet address can be prefilled securely. The purchase is processed by MoonPay; this app never receives card details. MoonPay decides supported countries, payment methods, fees, limits, and identity verification. Test with sandbox credentials first. GitHub Pages does not run Cloudflare Pages Functions, so this purchase integration requires the Cloudflare Pages deployment.
