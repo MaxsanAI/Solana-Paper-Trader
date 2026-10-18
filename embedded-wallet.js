@@ -91,7 +91,7 @@ function setUnlockedUI(record) {
   $("embeddedWalletAuth").hidden = true;
   $("embeddedWalletDetails").hidden = false;
   $("embeddedWalletAddress").textContent = publicKey;
-  $("embeddedWalletUsername").textContent = "";
+  $("embeddedWalletUsername").textContent = "Unlocked";
   $("embeddedWalletBackup").hidden = !record.backupAcknowledged;
   $("embeddedWalletLock").disabled = false;
   $("connectEmbeddedWalletBtn").disabled = false;
@@ -226,6 +226,7 @@ async function lockWallet() {
   $("embeddedWalletLock").disabled = true;
   $("connectEmbeddedWalletBtn").disabled = true;
   $("embeddedWalletTopLabel").textContent = "My Wallet";
+  $("embeddedWalletUsername").textContent = "Locked";
   $("liveWalletLabel").textContent = "Built-in wallet locked";
   status("Wallet locked. The encrypted key remains in this browser's local IndexedDB storage.");
   window.dispatchEvent(new CustomEvent("embedded-wallet-locked"));
