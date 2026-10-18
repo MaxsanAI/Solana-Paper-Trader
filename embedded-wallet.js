@@ -126,11 +126,46 @@ function setUnlockedUI(record) {
 }
 async function refreshBalance() {
   if (!publicKey) return;
-  try {
-    const c = new Connection("https://api.mainnet-beta.solana.com", "confirmed");
-    const lamports = await c.getBalance(new PublicKey(publicKey), "confirmed");
-    $("embeddedWalletBalance").textContent = (lamports / LAMPORTS_PER_SOL).toFixed(6) + " SOL";
-  } catch { $("embeddedWalletBalance").textContent = "Unavailable"; }
+  const address = publicKey;
+  const output = $("embeddedWalletBalance");
+  const endpoints = [
+    "https://api.mainnet-beta.solana.com",
+    "https://api.mainnet.solana.com"
+  ];
+  let lastError = null;
+  for (const endpoint of endpoints) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+    try {
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: "wallet-balance",
+          method: "getBalance",
+          params: [address, { commitment: "confirmed" }]
+        }),
+        signal: controller.signal
+      });
+      if (!response.ok) throw new Error("RPC HTTP " + response.status);
+      const data = await response.json();
+      if (data.error || !Number.isFinite(data?.result?.value)) {
+        throw new Error(data?.error?.message || "Invalid balance response");
+      }
+      if (publicKey !== address) return;
+      output.textContent = (data.result.value / LAMPORTS_PER_SOL).toFixed(6) + " SOL";
+      return;
+    } catch (error) {
+      lastError = error;
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+  if (publicKey === address && output) {
+    output.textContent = "Unavailable";
+    status("Could not read wallet balance from Solana RPC. Your funds are not moved by this check; try again shortly.", true);
+  }
 }
 async function createWallet() {
   const username = $("embeddedWalletUsernameInput").value.trim();
