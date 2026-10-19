@@ -631,11 +631,20 @@ async function liveSwap(side,forcedMint='',exitReason=''){
    return data;
   }
   async function getPumpOrder(preferredPool){
+   let tokenDecimals;
+   if(!buy){
+    const tokenAccounts=await connection.getParsedTokenAccountsByOwner(new w3.PublicKey(liveState.publicKey),{mint:new w3.PublicKey(mint)},'confirmed');
+    const matching=tokenAccounts.value.filter(item=>BigInt(item.account.data.parsed.info.tokenAmount.amount||'0')>0n);
+    if(!matching.length)throw new Error('No spendable token account was found for this mint. Refresh Live Trader positions and try again.');
+    const decimalsSet=new Set(matching.map(item=>Number(item.account.data.parsed.info.tokenAmount.decimals)));
+    if(decimalsSet.size!==1||![...decimalsSet].every(value=>Number.isInteger(value)&&value>=0&&value<=18))throw new Error('Token account returned inconsistent or invalid decimals; refusing to prepare a sell.');
+    tokenDecimals=[...decimalsSet][0];
+   }
    const pools=[preferredPool,preferredPool==='pump'?'pump-amm':'pump'];
    const errors=[];
    for(const pool of pools){
     try{
-     const response=await fetch('/api/swap/pump-order',{method:'POST',headers:{'content-type':'application/json','accept':'application/json'},body:JSON.stringify({action:buy?'buy':'sell',mint,wallet:liveState.publicKey,amount,pool}),cache:'no-store'});
+     const response=await fetch('/api/swap/pump-order',{method:'POST',headers:{'content-type':'application/json','accept':'application/json'},body:JSON.stringify({action:buy?'buy':'sell',mint,wallet:liveState.publicKey,amount,pool,...(!buy?{decimals:tokenDecimals}:{})}),cache:'no-store'});
      const data=await response.json().catch(()=>({}));
      if(!response.ok||!data.ok)throw new Error(String(data.diagnostic||data.error||'Pump transaction preparation failed')+(response.status?' (HTTP '+response.status+')':''));
      if(!Array.isArray(data.transactions)||!data.transactions.length)throw new Error('Pump did not return a signable transaction.');
