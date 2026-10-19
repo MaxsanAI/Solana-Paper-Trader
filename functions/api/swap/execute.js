@@ -28,9 +28,32 @@ async function rpcCall(rpcUrl, method, params) {
   return data.result;
 }
 
+function isProviderAccessError(error) {
+  return /blocked from this endpoint|access forbidden|indexed requests require a personal token|HTTP 403|\b403\b/i
+    .test(String(error?.message || error || ""));
+}
+
+async function rpcCallWithFallback(primaryUrl, method, params) {
+  try {
+    return await rpcCall(primaryUrl, method, params);
+  } catch (primaryError) {
+    // Only fail over on an explicit provider access denial. Do not replay on
+    // timeouts or ambiguous network errors, because a transaction may have landed.
+    if (primaryUrl === DEFAULT_RPC || !isProviderAccessError(primaryError)) throw primaryError;
+    try {
+      return await rpcCall(DEFAULT_RPC, method, params);
+    } catch (fallbackError) {
+      throw new Error(
+        "Configured RPC rejected access (" + String(primaryError?.message || "forbidden").slice(0, 90) +
+        "); official Solana RPC fallback failed (" + String(fallbackError?.message || "RPC error").slice(0, 90) + ")."
+      );
+    }
+  }
+}
+
 async function waitForConfirmation(rpcUrl, signature) {
   for (let attempt = 0; attempt < 12; attempt++) {
-    const result = await rpcCall(rpcUrl, "getSignatureStatuses", [[signature], { searchTransactionHistory: true }]);
+    const result = await rpcCallWithFallback(rpcUrl, "getSignatureStatuses", [[signature], { searchTransactionHistory: true }]);
     const status = result?.value?.[0];
     if (status?.err) {
       throw new Error("Solana rejected the transaction: " + JSON.stringify(status.err).slice(0, 220));
@@ -77,7 +100,7 @@ export async function onRequestPost({ request, env }) {
     const signedTransaction = signedTransactions[index];
     let signature;
     try {
-      signature = await rpcCall(rpcUrl, "sendTransaction", [signedTransaction, {
+      signature = await rpcCallWithFallback(rpcUrl, "sendTransaction", [signedTransaction, {
         encoding: "base64",
         skipPreflight: false,
         preflightCommitment: "confirmed",
