@@ -4,10 +4,10 @@ This repository keeps the paper simulator fully separate from real Live Trading.
 
 ## Included endpoints and resources
 
-- `/api/health` — reports whether Pages Functions, Workers AI, the Jupiter secret, and the live-only D1 binding are configured.
+- `/api/health` — reports Pages Functions, Workers AI, the Raydium swap integration, optional custom Solana RPC, and the live-only D1 binding.
 - `/api/market?path=...` — same-origin proxy for a small allowlist of DexScreener market-data endpoints.
-- `/api/swap/order` — validated SOL-to-token or token-to-SOL order proxy to Jupiter Swap API V2.
-- `/api/swap/execute` — forwards a transaction already signed by the connected wallet to Jupiter for execution.
+- `/api/swap/order` — validates a SOL-to-token or token-to-SOL request, gets a Raydium Trade API quote, and builds unsigned versioned transactions for the connected wallet to review and sign.
+- `/api/swap/execute` — sends only transactions already signed by the user's wallet to Solana mainnet RPC and checks their confirmation status. Jupiter is not used for live swap execution.
 - `migrations/0001_live_trader.sql` — tables for Live Trader positions, live trade events, and live TP/SL preferences only. It has no simulator tables.
 - `migrations/0002_live_auth.sql` — one-time wallet-signature challenges and expiring Live Trader sessions.
 - `/api/live/auth/challenge` and `/api/live/auth/verify` — verify wallet ownership with a signed message (no transaction is requested).
@@ -30,17 +30,20 @@ The intended database is:
 
 **Important:** the Live Trader UI now uses a wallet-signed message to authenticate access, then loads and saves confirmed live position/trade records through `/api/live/data`. A message signature is not a transaction and does not spend funds. The simulator continues to use its own browser `localStorage` and is never written to D1. Run both migrations before testing this flow.
 
-## Configure live swaps
+## Configure Raydium live swaps
 
-1. Ensure the Pages project root is the repository root and the build command is empty for this plain HTML site. The Functions directory must be at the repository root.
-2. In Pages **Settings → Variables and Secrets**, add `JUPITER_API_KEY` as a secret from the official Jupiter developer portal. Never add this key to GitHub or browser code.
-3. After deployment, test `/api/market?path=%2Flatest%2Fdex%2Fsearch%2F%3Fq%3DSOL`. Repeated requests may return `x-market-cache: HIT`; cache behavior can vary by edge location.
+1. Ensure the Cloudflare Pages project root is the repository root, the build command is empty for this plain HTML site, and the Functions directory is at the repository root.
+2. The live swap path uses Raydium's public Trade API and the public Solana mainnet RPC by default. **A `JUPITER_API_KEY` is no longer required for live swaps.** You can remove that secret from Cloudflare Pages after the new deployment is live and verified.
+3. Optional but recommended for reliability: in Cloudflare Pages **Settings → Variables and Secrets**, add `SOLANA_RPC_URL` as a server-side secret or variable containing an HTTPS Solana mainnet RPC URL from a provider you trust. Do not put RPC credentials in `index.html` or commit them to GitHub.
+4. Deploy the latest `main` branch, then open `/api/health`. It should report `swapProvider: "Raydium Trade API"`, `liveTradingEnabled: true`, and `orderExecution: "raydium-trade-api-and-solana-rpc-wallet-signature-required"`.
+5. Test with a small order. The terminal requests a Raydium quote, shows a manual confirmation with the token mint, estimated price impact, slippage, and transaction count, and only then asks the connected wallet to sign. If the quote becomes old, it is rebuilt and confirmation is requested again.
+
 
 ## Safety and separation
 
-- Never put a wallet private key, seed phrase, RPC secret, or trading secret in `index.html`, browser storage, Git, or a public variable. `JUPITER_API_KEY` must be a Cloudflare Pages secret.
+- Never put a wallet private key, seed phrase, RPC secret, or trading secret in `index.html`, browser storage, Git, or a public variable. If you configure `SOLANA_RPC_URL` with a provider credential, keep it server-side in Cloudflare Pages.
 - D1 tables are named `live_*` and are for real Live Trader tracking only. Do not write simulator balances, paper positions, paper history, or simulator settings into them.
-- The current live swap flow requires the user to sign transactions in Phantom or Solflare. A D1 binding stores data; it does not itself monitor prices or execute sales while the site is closed.
+- The current live swap flow requires the user to approve the in-terminal confirmation and sign the prepared transaction(s) with the connected trading wallet (embedded wallet, Phantom, or Solflare when supported). A D1 binding stores data; it does not itself monitor prices or execute sales while the site is closed.
 - Any API that reads or mutates a wallet's records must authenticate ownership of that wallet, not trust a client-supplied public address alone. Live Trader sessions expire after 12 hours and are kept in sessionStorage for the current browser tab.
 - The existing GitHub Pages simulator stays independent. D1/Pages Functions are available only on the Cloudflare Pages deployment.
 
