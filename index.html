@@ -524,7 +524,7 @@ let web3Promise;
 function loadWeb3(){if(!web3Promise)web3Promise=import('https://esm.sh/@solana/web3.js@1.98.0');return web3Promise;}
 function liveMessage(message,isError=false){const el=$('liveTradeMessage');if(el){el.textContent=message;el.classList.toggle('negative',isError);el.classList.toggle('positive',!isError);}}
 function updateLiveUsdConversion(){const input=$('liveSolAmount'),hint=$('liveUsdConversion');if(!input||!hint)return;const solUsd=Number(liveState.solUsd||livePrice(SOL_MINT)||0),usd=Number(input.value),maxUsd=solUsd*0.25;if(solUsd>0){input.max=String(maxUsd.toFixed(2));hint.textContent='Live SOL price: '+money(solUsd)+' / SOL · your amount ≈ '+(Number.isFinite(usd)&&usd>0?(usd/solUsd).toFixed(6):'—')+' SOL · max '+money(maxUsd)+' (0.25 SOL safety cap).';}else{hint.textContent='Live SOL/USD quote unavailable. Refresh markets before placing a real buy.';}}
-function liveWalletUi(){const connected=!!liveState.publicKey;$('liveWalletLabel').textContent=connected?liveState.providerName+' · '+liveState.publicKey.slice(0,5)+'…'+liveState.publicKey.slice(-5):'No wallet connected';$('disconnectWalletBtn').disabled=!connected;$('liveBuyBtn').disabled=!connected;$('liveSellBtn').disabled=!connected||!(BigInt(String(liveState.tracked[liveState.selectedMint]||'0'))>0n)||liveState.selling.has(liveState.selectedMint);$('withdrawSolBtn').disabled=!connected;$('liveStatusPill').textContent=connected?'WALLET CONNECTED · LIVE OPT-IN':'LIVE TRADING OFF';$('liveStatusPill').style.color=connected?'var(--mint)':'var(--muted)';$('liveMintLabel').textContent=liveState.selectedMint||'Search and select a token in Live Trading.';}
+function liveWalletUi(){const connected=!!liveState.publicKey;$('liveWalletLabel').textContent=connected?liveState.providerName+' · '+liveState.publicKey.slice(0,5)+'…'+liveState.publicKey.slice(-5):'No wallet connected';$('disconnectWalletBtn').disabled=!connected;$('liveBuyBtn').disabled=!connected;$('liveSellBtn').disabled=!connected||!(BigInt(String(liveState.tracked[liveState.selectedMint]||'0'))>0n);$('withdrawSolBtn').disabled=!connected;$('liveStatusPill').textContent=connected?'WALLET CONNECTED · LIVE OPT-IN':'LIVE TRADING OFF';$('liveStatusPill').style.color=connected?'var(--mint)':'var(--muted)';$('liveMintLabel').textContent=liveState.selectedMint||'Search and select a token in Live Trading.';}
 async function liveAuthSync(){
  if(!liveState.provider||!liveState.publicKey)return false;
  const wallet=liveState.publicKey;
@@ -602,7 +602,13 @@ async function liveSwap(side,forcedMint='',exitReason=''){
  const buy=side==='buy',trackedRaw=String(liveState.tracked[mint]||'0');
  if(!buy&&liveState.positions[mint]?.wallet&&liveState.positions[mint].wallet!==liveState.publicKey){liveMessage('This tracked position belongs to a different wallet. Connect the original wallet before selling.',true);return;}
  if(!buy&&!(BigInt(trackedRaw)>0n)){liveMessage('No token amount bought and tracked by this browser. Use the wallet to inspect any pre-existing holdings.',true);return;}
- if(!buy&&liveState.selling.has(mint))return;
+ if(!buy&&liveState.selling.has(mint)){
+  const lock=liveState.selling.get(mint)||{};
+  const age=lock.startedAt?Math.max(0,Math.round((Date.now()-lock.startedAt)/1000)):null;
+  const detail='A previous sell is marked '+String(lock.phase||'uncertain')+(age!==null?' ('+age+'s ago)':'')+'. Check this wallet\'s activity and token balance first. If the sell is not present and the tokens are still there, choose OK to clear the stale lock and prepare a fresh sell. Cancel keeps selling blocked.';
+  if(!window.confirm(detail)){liveMessage('Sell paused for safety: previous sell status has not been cleared.',true);return;}
+  liveState.selling.delete(mint);saveLiveTracking();
+ }
  const buyUsd=Number($('liveSolAmount').value),solUsd=Number(liveState.solUsd||livePrice(SOL_MINT)||0),maxBuyUsd=solUsd*0.25;
  const solAmount=buy&&solUsd>0?buyUsd/solUsd:0;
  if(buy&&(!Number.isFinite(buyUsd)||buyUsd<0.20||!Number.isFinite(solUsd)||solUsd<=0||buyUsd>maxBuyUsd)){
