@@ -610,7 +610,7 @@ async function liveSwap(side,forcedMint='',exitReason=''){
  }
  const btn=buy?$('liveBuyBtn'):$('liveSellBtn');
  if(!buy){liveState.selling.set(mint,{phase:'signing',startedAt:Date.now(),reason:exitReason||'Manual sell'});saveLiveTracking();}
- btn.disabled=true;const label=btn.textContent;btn.textContent='GETTING RAYDIUM QUOTE…';
+ btn.disabled=true;const label=btn.textContent;btn.textContent='PREPARING LIVE SWAP…';
  let executeStarted=false,persistenceWarning='';
  try{
   const w3=await loadWeb3();
@@ -630,21 +630,45 @@ async function liveSwap(side,forcedMint='',exitReason=''){
    if(!Array.isArray(data.transactions)||!data.transactions.length||!data.outputAmount)throw new Error('Raydium did not return a complete signable swap.');
    return data;
   }
-  let order=await getRaydiumOrder();
+  async function getPumpOrder(preferredPool){
+   const pools=[preferredPool,preferredPool==='pump'?'pump-amm':'pump'];
+   const errors=[];
+   for(const pool of pools){
+    try{
+     const response=await fetch('/api/swap/pump-order',{method:'POST',headers:{'content-type':'application/json','accept':'application/json'},body:JSON.stringify({action:buy?'buy':'sell',mint,wallet:liveState.publicKey,amount,pool}),cache:'no-store'});
+     const data=await response.json().catch(()=>({}));
+     if(!response.ok||!data.ok)throw new Error(String(data.diagnostic||data.error||'Pump transaction preparation failed')+(response.status?' (HTTP '+response.status+')':''));
+     if(!Array.isArray(data.transactions)||!data.transactions.length)throw new Error('Pump did not return a signable transaction.');
+     return data;
+    }catch(error){errors.push(pool+': '+(error?.message||'failed'));}
+   }
+   throw new Error('Pump.fun bonding curve and PumpSwap could not prepare this trade. '+errors.join(' | '));
+  }
+  const marketInfo=liveTokenInfo(mint),marketDex=String(marketInfo.dexId||'').toLowerCase(),trackedVenue=String(liveState.positions[mint]?.venue||'').toLowerCase();
+  const isPumpToken=marketDex.includes('pump')||trackedVenue==='pump'||trackedVenue==='pump-amm';
+  const preferredPumpPool=marketDex.includes('swap')||trackedVenue==='pump-amm'?'pump-amm':'pump';
+  async function getLiveOrder(){return isPumpToken?getPumpOrder(preferredPumpPool):getRaydiumOrder();}
+  let tokenBalanceBefore=0n;
+  async function readTokenBalanceRaw(){
+   const accounts=await connection.getParsedTokenAccountsByOwner(new w3.PublicKey(liveState.publicKey),{mint:new w3.PublicKey(mint)},'confirmed');
+   return accounts.value.reduce((total,item)=>total+BigInt(item.account.data.parsed.info.tokenAmount.amount||'0'),0n);
+  }
+  if(buy&&isPumpToken){try{tokenBalanceBefore=await readTokenBalanceRaw();}catch{}}
+  let order=await getLiveOrder();
   const info=liveTokenInfo(mint),symbol=info.baseToken?.symbol||'TOKEN';
   function confirmOrder(q,refreshed){
    const impact=(Number(q.priceImpactPct||0)*100).toFixed(3);
    const routeCount=Array.isArray(q.routePlan)?q.routePlan.length:0;
-   const summary=(buy?'BUY':'SELL')+' '+symbol+' via Raydium on Solana mainnet\n\n'+(buy?'Spend: '+money(buyUsd)+' (about '+solAmount.toFixed(6)+' SOL)':'Sell tracked token balance')+'\nEstimated price impact: '+impact+'%\nMaximum slippage: '+(Number(q.slippageBps||100)/100).toFixed(2)+'%\nRoute hops: '+routeCount+'\nTransactions to sign: '+q.transactions.length+'\n\nOnly continue if you recognize the token mint:\n'+mint+'\n\n'+(refreshed?'The quote was refreshed because the previous quote was getting old.\n\n':'')+'Confirm only if these details are correct.';
+   const summary=(buy?'BUY':'SELL')+' '+symbol+' via '+String(q.provider||'Raydium')+' on Solana mainnet\n\n'+(buy?'Spend: '+money(buyUsd)+' (about '+solAmount.toFixed(6)+' SOL)':'Sell tracked token balance')+'\nEstimated price impact: '+(q.priceImpactPct==null?'not supplied by Pump transaction builder':impact+'%')+'\nMaximum slippage: '+(Number(q.slippageBps||100)/100).toFixed(2)+'%\nRoute hops: '+routeCount+'\nTransactions to sign: '+q.transactions.length+(q.serviceFeeBps?'\nPumpPortal Local service fee: '+(Number(q.serviceFeeBps)/100).toFixed(2)+'% of trade':'')+'\n\nOnly continue if you recognize the token mint:\n'+mint+'\n\n'+(refreshed?'The transaction was rebuilt because the previous one was getting old.\n\n':'')+'Confirm only if these details are correct.';
    return window.confirm(summary);
   }
-  if(!confirmOrder(order,false)){if(!buy){liveState.selling.delete(mint);saveLiveTracking();}liveMessage('Raydium swap cancelled. Nothing was signed or sent.');return;}
+  if(!confirmOrder(order,false)){if(!buy){liveState.selling.delete(mint);saveLiveTracking();}liveMessage('Live swap cancelled. Nothing was signed or sent.');return;}
   // Raydium quotes are short-lived. If the confirmation dialog stayed open,
   // rebuild the transaction and ask again before signing anything.
   if(Date.now()-Number(order.quoteAt||0)>20000){
    btn.textContent='REFRESHING QUOTE…';
-   order=await getRaydiumOrder();
-   if(!confirmOrder(order,true)){if(!buy){liveState.selling.delete(mint);saveLiveTracking();}liveMessage('Refreshed Raydium swap cancelled. Nothing was signed or sent.');return;}
+   order=await getLiveOrder();
+   if(!confirmOrder(order,true)){if(!buy){liveState.selling.delete(mint);saveLiveTracking();}liveMessage('Refreshed live swap cancelled. Nothing was signed or sent.');return;}
   }
   const signedTransactions=[];
   for(let index=0;index<order.transactions.length;index++){
@@ -654,9 +678,9 @@ async function liveSwap(side,forcedMint='',exitReason=''){
    const serialized=signed.serialize();let binary='';
    for(let i=0;i<serialized.length;i++)binary+=String.fromCharCode(serialized[i]);
    signedTransactions.push(btoa(binary));
-   liveMessage('Signed Raydium transaction '+(index+1)+' of '+order.transactions.length+'. Preparing the on-chain submission…');
+   liveMessage('Signed '+String(order.provider||'swap')+' transaction '+(index+1)+' of '+order.transactions.length+'. Preparing the on-chain submission…');
   }
-  liveMessage('All transaction signatures are ready. Sending the Raydium swap to Solana mainnet…');
+  liveMessage('All transaction signatures are ready. Sending '+String(order.provider||'swap')+' transaction to Solana mainnet…');
   executeStarted=true;
   if(!buy){liveState.selling.set(mint,{phase:'executing',startedAt:Date.now(),reason:exitReason||'Manual sell'});saveLiveTracking();}
   const execResponse=await fetch('/api/swap/execute',{method:'POST',headers:{'content-type':'application/json',accept:'application/json'},body:JSON.stringify({signedTransactions,outputAmount:String(order.outputAmount)})});
@@ -668,9 +692,15 @@ async function liveSwap(side,forcedMint='',exitReason=''){
   }
   if(typeof result.signature!=='string'||!result.signature)throw new Error('Solana RPC returned no transaction signature. Check wallet activity before retrying.');
   if(buy){
-   const oldRaw=BigInt(liveState.tracked[mint]||0),newRaw=BigInt(order.outputAmount||0),nextAmount=oldRaw+newRaw,livePx=livePrice(mint)||Number(liveTokenInfo(mint)?.priceUsd)||0,cfg=liveTpSlValues(),previous=liveState.positions[mint],currentSolUsd=livePrice(SOL_MINT)||liveState.solUsd||Number(liveState.markets.find(x=>x.baseToken?.address===SOL_MINT)?.priceUsd)||0,costUsd=solAmount*currentSolUsd,nextCost=Number(previous?.costUsd||0)+costUsd;
+   let receivedRaw=order.outputAmount?BigInt(order.outputAmount):0n;
+   if(isPumpToken&&!receivedRaw){
+    try{for(let attempt=0;attempt<6;attempt++){const currentRaw=await readTokenBalanceRaw();if(currentRaw>tokenBalanceBefore){receivedRaw=currentRaw-tokenBalanceBefore;break;}await new Promise(resolve=>setTimeout(resolve,500));}}catch{}
+    if(!receivedRaw){try{const tx=await connection.getTransaction(result.signature,{commitment:'confirmed',maxSupportedTransactionVersion:0});const pre=(tx?.meta?.preTokenBalances||[]).filter(x=>x.mint===mint&&x.owner===liveState.publicKey).reduce((n,x)=>n+BigInt(x.uiTokenAmount?.amount||'0'),0n);const post=(tx?.meta?.postTokenBalances||[]).filter(x=>x.mint===mint&&x.owner===liveState.publicKey).reduce((n,x)=>n+BigInt(x.uiTokenAmount?.amount||'0'),0n);if(post>pre)receivedRaw=post-pre;}catch{}}
+    if(!receivedRaw)persistenceWarning=' Swap was confirmed, but the received token amount could not be read yet. Check wallet balances before trading this token again.';
+   }
+   const oldRaw=BigInt(liveState.tracked[mint]||0),newRaw=receivedRaw,nextAmount=oldRaw+newRaw,livePx=livePrice(mint)||Number(liveTokenInfo(mint)?.priceUsd)||0,cfg=liveTpSlValues(),previous=liveState.positions[mint],currentSolUsd=livePrice(SOL_MINT)||liveState.solUsd||Number(liveState.markets.find(x=>x.baseToken?.address===SOL_MINT)?.priceUsd)||0,costUsd=solAmount*currentSolUsd,nextCost=Number(previous?.costUsd||0)+costUsd;
    liveState.tracked[mint]=String(nextAmount);
-   liveState.positions[mint]={entryPrice:previous&&oldRaw>0n&&livePx>0?(Number(previous.entryPrice||livePx)*Number(oldRaw)+livePx*Number(newRaw))/Number(nextAmount):livePx,tp:cfg.tp,sl:cfg.sl,costSol:Number(previous?.costSol||0)+solAmount,costUsd:nextCost,entrySolUsd:currentSolUsd,symbol,openedAt:previous?.openedAt||Date.now(),updatedAt:Date.now(),wallet:liveState.publicKey};
+   liveState.positions[mint]={entryPrice:previous&&oldRaw>0n&&newRaw>0n&&livePx>0?(Number(previous.entryPrice||livePx)*Number(oldRaw)+livePx*Number(newRaw))/Number(nextAmount):livePx,tp:cfg.tp,sl:cfg.sl,costSol:Number(previous?.costSol||0)+solAmount,costUsd:nextCost,entrySolUsd:currentSolUsd,symbol,openedAt:previous?.openedAt||Date.now(),updatedAt:Date.now(),wallet:liveState.publicKey,venue:order.pool||previous?.venue||'raydium'};
    liveState.totalBoughtSol+=solAmount;liveState.totalBoughtUsd+=costUsd;
    liveState.history.unshift({time:Date.now(),side:'BUY',mint,symbol,valueUsd:costUsd,pnlUsd:null,signature:result.signature,sol:solAmount,priceUsd:livePx});
    try{await persistLivePosition(mint);await persistLiveEvent({mint,side:'BUY',symbol,valueUsd:costUsd,pnlUsd:null,signature:result.signature,solAmount:solAmount,priceUsd:livePx,reason:exitReason||'Live buy'});}catch(syncError){persistenceWarning=' On-chain swap succeeded, but D1 sync failed: '+(syncError?.message||'unknown error')+'. Check D1 before retrying any trade.';}
@@ -685,8 +715,8 @@ async function liveSwap(side,forcedMint='',exitReason=''){
    try{await persistLiveEvent({mint,side:'SELL',symbol:p.symbol||symbol,valueUsd:proceedsUsd,pnlUsd,signature:result.signature,solAmount:currentSolUsd>0?proceedsUsd/currentSolUsd:0,priceUsd:px,reason:exitReason||'Manual live sell'});}catch(syncError){persistenceWarning=' On-chain sell succeeded, but D1 sync failed: '+(syncError?.message||'unknown error')+'. Check D1 before retrying any trade.';}
   }
   saveLiveTracking();
-  liveMessage((buy?'BUY':'SELL')+' confirmed by Raydium on Solana. Signature: '+result.signature+'. Check your wallet for final balances.'+persistenceWarning,!!persistenceWarning);
-  if(!buy){const status=$('liveProtectionStatus');if(status)status.textContent='Live position sold successfully'+(exitReason?' · '+exitReason:'')+'. Raydium swap confirmed.';}
+  liveMessage((buy?'BUY':'SELL')+' confirmed by '+String(order.provider||'the swap venue')+' on Solana. Signature: '+result.signature+'. Check your wallet for final balances.'+persistenceWarning,!!persistenceWarning);
+  if(!buy){const status=$('liveProtectionStatus');if(status)status.textContent='Live position sold successfully'+(exitReason?' · '+exitReason:'')+'. '+String(order.provider||'Swap')+' transaction confirmed.';}
   liveWalletUi();
  }catch(e){
   const message=e?.message||'Live swap failed. Check wallet activity before retrying to avoid duplicates.';
