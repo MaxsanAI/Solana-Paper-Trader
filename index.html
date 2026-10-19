@@ -645,8 +645,19 @@ async function liveSwap(side,forcedMint='',exitReason=''){
    throw new Error('Pump.fun bonding curve and PumpSwap could not prepare this trade. '+errors.join(' | '));
   }
   const marketInfo=liveTokenInfo(mint),marketDex=String(marketInfo.dexId||'').toLowerCase(),trackedVenue=String(liveState.positions[mint]?.venue||'').toLowerCase();
-  const isPumpToken=marketDex.includes('pump')||trackedVenue==='pump'||trackedVenue==='pump-amm';
-  const preferredPumpPool=marketDex.includes('swap')||trackedVenue==='pump-amm'?'pump-amm':'pump';
+  async function detectPumpVenue(){
+   try{
+    const response=await fetchTimed('https://api.dexscreener.com/latest/dex/tokens/'+encodeURIComponent(mint),{cache:'no-store'},8000);
+    if(!response.ok)return '';
+    const data=await response.json(),pairs=(Array.isArray(data.pairs)?data.pairs:[]).filter(p=>p.chainId==='solana'&&p.baseToken?.address===mint&&/pumpfun|pumpswap|pump-amm/i.test(String(p.dexId||'')));
+    if(pairs.some(p=>/pumpswap|pump-amm/i.test(String(p.dexId||''))))return 'pump-amm';
+    if(pairs.some(p=>/pumpfun/i.test(String(p.dexId||''))))return 'pump';
+   }catch{}
+   return '';
+  }
+  const detectedPumpPool=await detectPumpVenue();
+  const isPumpToken=!!detectedPumpPool||marketDex.includes('pump')||trackedVenue==='pump'||trackedVenue==='pump-amm';
+  const preferredPumpPool=detectedPumpPool||(marketDex.includes('swap')||trackedVenue==='pump-amm'?'pump-amm':'pump');
   async function getLiveOrder(){return isPumpToken?getPumpOrder(preferredPumpPool):getRaydiumOrder();}
   let tokenBalanceBefore=0n;
   async function readTokenBalanceRaw(){
