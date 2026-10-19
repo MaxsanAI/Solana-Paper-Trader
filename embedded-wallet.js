@@ -84,6 +84,45 @@ async function decryptSecret(record, password) {
   const raw = await crypto.subtle.decrypt({ name: "AES-GCM", iv: b64ToBytes(record.iv) }, key, b64ToBytes(record.cipher));
   return new Uint8Array(raw);
 }
+
+const AUTO_UNLOCK_KEY = "autoUnlockKey";
+const AUTO_UNLOCK_RECORD = "autoUnlockRecord";
+async function rememberWalletForThisBrowser(kp, enabled) {
+  const db = await dbOpen();
+  try {
+    const store = db.transaction(STORE, "readwrite").objectStore(STORE);
+    if (!enabled) {
+      store.delete(AUTO_UNLOCK_KEY);
+      store.delete(AUTO_UNLOCK_RECORD);
+      return;
+    }
+    const cryptoKey = await crypto.subtle.generateKey({ name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const cipher = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, cryptoKey, kp.secretKey);
+    store.put(cryptoKey, AUTO_UNLOCK_KEY);
+    store.put({ version: 1, address: kp.publicKey.toBase58(), iv: bytesToB64(iv), cipher: bytesToB64(new Uint8Array(cipher)) }, AUTO_UNLOCK_RECORD);
+  } finally { db.close(); }
+}
+async function autoUnlockRememberedWallet() {
+  const db = await dbOpen();
+  let cryptoKey, saved;
+  try {
+    const store = db.transaction(STORE, "readonly").objectStore(STORE);
+    [cryptoKey, saved] = await Promise.all([
+      new Promise((resolve, reject) => { const req = store.get(AUTO_UNLOCK_KEY); req.onsuccess = () => resolve(req.result || null); req.onerror = () => reject(req.error); }),
+      new Promise((resolve, reject) => { const req = store.get(AUTO_UNLOCK_RECORD); req.onsuccess = () => resolve(req.result || null); req.onerror = () => reject(req.error); })
+    ]);
+  } finally { db.close(); }
+  if (!cryptoKey || !saved || saved.version !== 1) return false;
+  const raw = await crypto.subtle.decrypt({ name: "AES-GCM", iv: b64ToBytes(saved.iv) }, cryptoKey, b64ToBytes(saved.cipher));
+  const kp = Keypair.fromSecretKey(new Uint8Array(raw));
+  if (kp.publicKey.toBase58() !== saved.address) throw new Error("Remembered wallet address verification failed.");
+  const record = await readRecord();
+  if (!record || record.address !== saved.address) return false;
+  keypair = kp; publicKey = saved.address;
+  setUnlockedUI(record);
+  return true;
+}
 function validatePassword(p) {
   if (typeof p !== "string" || p.length < 12) throw new Error("Password must contain at least 12 characters.");
 }
@@ -182,6 +221,7 @@ async function createWallet() {
   keypair = kp; publicKey = kp.publicKey.toBase58();
   $("embeddedWalletPassword").value = "";
   setUnlockedUI(record);
+  await rememberWalletForThisBrowser(kp, $("embeddedWalletRemember").checked);
   // Display the backup secret only in this initial creation flow.
   $("embeddedWalletBackupSecret").textContent = bs58.encode(kp.secretKey);
   $("embeddedWalletBackup").hidden = false;
@@ -199,6 +239,7 @@ async function loginWallet() {
   keypair = kp; publicKey = record.address;
   $("embeddedWalletPassword").value = "";
   setUnlockedUI(record);
+  await rememberWalletForThisBrowser(kp, $("embeddedWalletRemember").checked);
 }
 async function exportKey() {
   if (!keypair) throw new Error("Unlock the wallet first.");
@@ -345,6 +386,7 @@ async function buySolWithMoonPay() {
   }
 }
 async function lockWallet() {
+  try { await rememberWalletForThisBrowser(null, false); } catch {}
   keypair = null; publicKey = "";
   window.embeddedSolanaWallet = null;
   if (balanceTimer) clearInterval(balanceTimer);
@@ -422,7 +464,8 @@ $("embeddedWalletBackupAck").addEventListener("click", async () => {
       $("embeddedWalletUsernameInput").value = record.username;
       $("embeddedWalletCreateBtn").disabled = true;
       $("embeddedWalletCreateBtn").textContent = "Wallet already created";
-      status("Encrypted wallet found. Enter your username and password to unlock it.");
+      const remembered = await autoUnlockRememberedWallet().catch(() => false);
+      if (!remembered) status("Encrypted wallet found. Enter your username and password to unlock it.");
     } else status("Create your personal wallet. Your password is never sent to the server and cannot be reset.");
   } catch { status("IndexedDB is unavailable. Open this site over HTTPS in a modern browser.", true); }
 })();
