@@ -614,7 +614,7 @@ async function liveSwap(side,forcedMint='',exitReason=''){
  let executeStarted=false,persistenceWarning='';
  try{
   const w3=await loadWeb3();
-  const connection=new w3.Connection('https://api.mainnet-beta.solana.com','confirmed');
+  const connection=new w3.Connection('https://solana-rpc.publicnode.com','confirmed');
   if(buy){
    const lamports=await connection.getBalance(new w3.PublicKey(liveState.publicKey),'confirmed');
    // Keep 0.003 SOL available for token-account rent and network/priority fees.
