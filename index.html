@@ -633,12 +633,14 @@ async function liveSwap(side,forcedMint='',exitReason=''){
   async function getPumpOrder(preferredPool){
    let tokenDecimals;
    if(!buy){
-    const tokenAccounts=await connection.getParsedTokenAccountsByOwner(new w3.PublicKey(liveState.publicKey),{mint:new w3.PublicKey(mint)},'confirmed');
-    const matching=tokenAccounts.value.filter(item=>BigInt(item.account.data.parsed.info.tokenAmount.amount||'0')>0n);
-    if(!matching.length)throw new Error('No spendable token account was found for this mint. Refresh Live Trader positions and try again.');
-    const decimalsSet=new Set(matching.map(item=>Number(item.account.data.parsed.info.tokenAmount.decimals)));
-    if(decimalsSet.size!==1||![...decimalsSet].every(value=>Number.isInteger(value)&&value>=0&&value<=18))throw new Error('Token account returned inconsistent or invalid decimals; refusing to prepare a sell.');
-    tokenDecimals=[...decimalsSet][0];
+    // Mint account lookup is a direct account read, not an indexed owner-token query.
+    // The latter can be blocked by public RPC providers and prevents sells from being prepared.
+    const mintAccount=await connection.getAccountInfo(new w3.PublicKey(mint),'confirmed');
+    if(!mintAccount||mintAccount.data.length<82)throw new Error('Could not read the token mint account from Solana RPC. Refresh and try again.');
+    const owner=mintAccount.owner.toBase58();
+    if(!['TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA','TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb'].includes(owner))throw new Error('The mint is not owned by a supported Solana Token Program.');
+    tokenDecimals=Number(mintAccount.data[44]);
+    if(!Number.isInteger(tokenDecimals)||tokenDecimals<0||tokenDecimals>18)throw new Error('The mint returned invalid token decimals; refusing to prepare a sell.');
    }
    const pools=[preferredPool,preferredPool==='pump'?'pump-amm':'pump'];
    const errors=[];
