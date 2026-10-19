@@ -699,7 +699,8 @@ async function liveSwap(side,forcedMint='',exitReason=''){
   if(!execResponse.ok||result.status!=='Success'){
    const sig=result.signature||result.signatures?.[result.signatures.length-1];
    if(result.status==='Pending')throw new Error((result.error||'Raydium transaction was submitted but is not confirmed yet.')+(sig?' Signature: '+sig:'')+' Do not retry until you check the transaction status.');
-   throw new Error((result.error||result.diagnostic||'Raydium swap did not confirm. Check wallet activity before retrying.')+(sig?' Signature: '+sig:''));
+   const detail=String(result.diagnostic||'').trim();
+   throw new Error((result.error||'Solana swap did not confirm. Check wallet activity before retrying.')+(detail?'\nRPC detail: '+detail:'')+(sig?'\nSignature: '+sig:''));
   }
   if(typeof result.signature!=='string'||!result.signature)throw new Error('Solana RPC returned no transaction signature. Check wallet activity before retrying.');
   if(buy){
