@@ -26,24 +26,35 @@ function rawToDecimal(raw, decimals) {
 }
 
 async function tokenDecimals(mint) {
-  const response = await fetch(RPC_URL, {
-    method: "POST",
-    headers: { "content-type": "application/json", accept: "application/json" },
-    body: JSON.stringify({
-      jsonrpc: "2.0", id: "paper-trader-pump-supply",
-      method: "getTokenSupply", params: [mint, { commitment: "confirmed" }]
-    }),
-    redirect: "manual",
-    signal: AbortSignal.timeout(12000)
-  });
-  const body = await response.text();
-  let data;
-  try { data = JSON.parse(body); } catch { throw new Error("Solana RPC returned invalid token-supply JSON."); }
-  const decimals = data?.result?.value?.decimals;
-  if (!response.ok || data?.error || !Number.isInteger(decimals) || decimals < 0 || decimals > 18) {
-    throw new Error(String(data?.error?.message || "Could not read token decimals from Solana.").slice(0, 180));
+  // PublicNode can require a personal token for some indexed RPC methods.
+  // Use Solana's public mainnet RPC first, then fall back to PublicNode.
+  const rpcEndpoints = ["https://api.mainnet-beta.solana.com", RPC_URL];
+  const errors = [];
+  for (const rpcUrl of rpcEndpoints) {
+    try {
+      const response = await fetch(rpcUrl, {
+        method: "POST",
+        headers: { "content-type": "application/json", accept: "application/json" },
+        body: JSON.stringify({
+          jsonrpc: "2.0", id: "paper-trader-pump-supply",
+          method: "getTokenSupply", params: [mint, { commitment: "confirmed" }]
+        }),
+        redirect: "manual",
+        signal: AbortSignal.timeout(10000)
+      });
+      const body = await response.text();
+      let data;
+      try { data = JSON.parse(body); } catch { throw new Error("RPC returned invalid token-supply JSON (HTTP " + response.status + ")."); }
+      const decimals = data?.result?.value?.decimals;
+      if (!response.ok || data?.error || !Number.isInteger(decimals) || decimals < 0 || decimals > 18) {
+        throw new Error(String(data?.error?.message || "Could not read token decimals (HTTP " + response.status + ").").slice(0, 180));
+      }
+      return decimals;
+    } catch (error) {
+      errors.push(String(error?.message || "RPC request failed").slice(0, 160));
+    }
   }
-  return decimals;
+  throw new Error("Could not read token decimals from Solana RPC providers: " + errors.join(" | ").slice(0, 220));
 }
 
 function toBase64(bytes) {
