@@ -88,19 +88,35 @@ async function decryptSecret(record, password) {
 const AUTO_UNLOCK_KEY = "autoUnlockKey";
 const AUTO_UNLOCK_RECORD = "autoUnlockRecord";
 async function rememberWalletForThisBrowser(kp, enabled) {
+  if (!enabled || !kp) {
+    const db = await dbOpen();
+    try {
+      const tx = db.transaction(STORE, "readwrite");
+      tx.objectStore(STORE).delete(AUTO_UNLOCK_KEY);
+      tx.objectStore(STORE).delete(AUTO_UNLOCK_RECORD);
+      await new Promise((resolve, reject) => {
+        tx.oncomplete = resolve;
+        tx.onerror = () => reject(tx.error);
+        tx.onabort = () => reject(tx.error || new Error("Could not clear remembered wallet."));
+      });
+    } finally { db.close(); }
+    return;
+  }
+  // Perform WebCrypto work before opening the IndexedDB write transaction.
+  const cryptoKey = await crypto.subtle.generateKey({ name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const cipher = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, cryptoKey, kp.secretKey);
+  const saved = { version: 1, address: kp.publicKey.toBase58(), iv: bytesToB64(iv), cipher: bytesToB64(new Uint8Array(cipher)) };
   const db = await dbOpen();
   try {
-    const store = db.transaction(STORE, "readwrite").objectStore(STORE);
-    if (!enabled) {
-      store.delete(AUTO_UNLOCK_KEY);
-      store.delete(AUTO_UNLOCK_RECORD);
-      return;
-    }
-    const cryptoKey = await crypto.subtle.generateKey({ name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
-    const iv = crypto.getRandomValues(new Uint8Array(12));
-    const cipher = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, cryptoKey, kp.secretKey);
-    store.put(cryptoKey, AUTO_UNLOCK_KEY);
-    store.put({ version: 1, address: kp.publicKey.toBase58(), iv: bytesToB64(iv), cipher: bytesToB64(new Uint8Array(cipher)) }, AUTO_UNLOCK_RECORD);
+    const tx = db.transaction(STORE, "readwrite");
+    tx.objectStore(STORE).put(cryptoKey, AUTO_UNLOCK_KEY);
+    tx.objectStore(STORE).put(saved, AUTO_UNLOCK_RECORD);
+    await new Promise((resolve, reject) => {
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error || new Error("Could not save remembered wallet."));
+    });
   } finally { db.close(); }
 }
 async function autoUnlockRememberedWallet() {
