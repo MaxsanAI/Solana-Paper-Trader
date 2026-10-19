@@ -8,13 +8,16 @@ const json = (data, status = 200) => new Response(JSON.stringify(data, null, 2),
 });
 
 export function onRequestGet({ env } = {}) {
-  const liveTradingConfigured = Boolean(env && env.JUPITER_API_KEY);
+  const liveTradingConfigured = true; // Raydium Trade API + public Solana RPC; no Jupiter API key required.
+  const customRpcConfigured = Boolean(env && env.SOLANA_RPC_URL);
   const liveDatabaseConfigured = Boolean(env && env.LIVE_DB && typeof env.LIVE_DB.prepare === "function");
   return json({
     ok: true,
     service: "solana-paper-trader-api",
-    mode: liveTradingConfigured ? "paper-plus-wallet-signed-live-swaps" : "paper-only-until-live-swap-secret-configured",
+    mode: "paper-plus-raydium-wallet-signed-live-swaps",
     liveTradingEnabled: liveTradingConfigured,
+    swapProvider: "Raydium Trade API",
+    solanaRpcConfigured: customRpcConfigured,
     liveDatabaseConfigured,
     workersAiConfigured: Boolean(env && env.AI && typeof env.AI.run === "function"),
     workersAiModel: "@cf/meta/llama-3.1-8b-instruct-fast",
@@ -25,7 +28,8 @@ export function onRequestGet({ env } = {}) {
       workersAI: env && env.AI && typeof env.AI.run === "function" ? "binding-AI-configured" : "missing-binding-AI",
       liveStorage: liveDatabaseConfigured ? "D1-LIVE_DB-configured" : "missing-D1-LIVE_DB-binding",
       simulatorStorage: "browser-localStorage-independent",
-      orderExecution: liveTradingConfigured ? "jupiter-secret-configured-wallet-signature-required" : "disabled-missing-JUPITER_API_KEY"
+      orderExecution: "raydium-trade-api-and-solana-rpc-wallet-signature-required",
+      solanaRpc: customRpcConfigured ? "custom-SOLANA_RPC_URL-configured" : "using-public-solana-mainnet-rpc"
     }
   });
 }
