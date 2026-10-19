@@ -1,4 +1,4 @@
-const DEFAULT_RPC = "https://solana-rpc.publicnode.com";
+const DEFAULT_RPC = "https://api.mainnet-beta.solana.com";
 const HEADERS = {
   "content-type": "application/json; charset=utf-8",
   "cache-control": "no-store",
