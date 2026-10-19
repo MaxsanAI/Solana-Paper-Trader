@@ -25,36 +25,8 @@ function rawToDecimal(raw, decimals) {
   return fraction ? whole + "." + fraction : whole;
 }
 
-async function tokenDecimals(mint) {
-  // PublicNode can require a personal token for some indexed RPC methods.
-  // Use Solana's public mainnet RPC first, then fall back to PublicNode.
-  const rpcEndpoints = ["https://api.mainnet-beta.solana.com", RPC_URL];
-  const errors = [];
-  for (const rpcUrl of rpcEndpoints) {
-    try {
-      const response = await fetch(rpcUrl, {
-        method: "POST",
-        headers: { "content-type": "application/json", accept: "application/json" },
-        body: JSON.stringify({
-          jsonrpc: "2.0", id: "paper-trader-pump-supply",
-          method: "getTokenSupply", params: [mint, { commitment: "confirmed" }]
-        }),
-        redirect: "manual",
-        signal: AbortSignal.timeout(10000)
-      });
-      const body = await response.text();
-      let data;
-      try { data = JSON.parse(body); } catch { throw new Error("RPC returned invalid token-supply JSON (HTTP " + response.status + ")."); }
-      const decimals = data?.result?.value?.decimals;
-      if (!response.ok || data?.error || !Number.isInteger(decimals) || decimals < 0 || decimals > 18) {
-        throw new Error(String(data?.error?.message || "Could not read token decimals (HTTP " + response.status + ").").slice(0, 180));
-      }
-      return decimals;
-    } catch (error) {
-      errors.push(String(error?.message || "RPC request failed").slice(0, 160));
-    }
-  }
-  throw new Error("Could not read token decimals from Solana RPC providers: " + errors.join(" | ").slice(0, 220));
+function validDecimals(value) {
+  return Number.isInteger(value) && value >= 0 && value <= 18;
 }
 
 function toBase64(bytes) {
@@ -78,6 +50,7 @@ export async function onRequestPost({ request }) {
   const wallet = String(input?.wallet || "");
   const amount = String(input?.amount || "");
   const pool = String(input?.pool || "");
+  const decimals = input?.decimals;
   if (!["buy", "sell"].includes(action)) return json({ ok: false, error: "Action must be buy or sell." }, 400);
   if (!BASE58.test(mint) || mint === SOL_MINT || !BASE58.test(wallet)) {
     return json({ ok: false, error: "Invalid token mint or internal-wallet public address." }, 400);
@@ -99,7 +72,9 @@ export async function onRequestPost({ request }) {
       tradeAmount = rawToDecimal(amount, 9);
       denominatedInSol = "true";
     } else {
-      const decimals = await tokenDecimals(mint);
+      if (!validDecimals(decimals)) {
+        return json({ ok: false, error: "Missing or invalid token decimals supplied from the connected wallet token account." }, 400);
+      }
       tradeAmount = rawToDecimal(amount, decimals);
       denominatedInSol = "false";
     }
