@@ -15,7 +15,7 @@ async function raydiumJson(url, options) {
   const response = await fetch(url, {
     ...options,
     headers: { accept: "application/json", ...(options?.headers || {}) },
-    redirect: "error",
+    redirect: "manual",
     signal: AbortSignal.timeout(20000)
   });
   const body = await response.text();
