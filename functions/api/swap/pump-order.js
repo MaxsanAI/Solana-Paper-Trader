@@ -1,6 +1,8 @@
 const RPC_URL = "https://solana-rpc.publicnode.com";
 const PUMPPORTAL_URL = "https://pumpportal.fun/api/trade-local";
 const SOL_MINT = "So11111111111111111111111111111111111111112";
+const PUMP_SLIPPAGE_PERCENT = 10;
+const PUMP_SLIPPAGE_BPS = PUMP_SLIPPAGE_PERCENT * 100;
 const HEADERS = {
   "content-type": "application/json; charset=utf-8",
   "cache-control": "no-store",
@@ -100,7 +102,7 @@ export async function onRequestPost({ request }) {
         mint,
         amount: tradeAmount,
         denominatedInSol,
-        slippage: 5,
+        slippage: PUMP_SLIPPAGE_PERCENT,
         priorityFee: 0.00005,
         pool
       }),
@@ -137,7 +139,7 @@ export async function onRequestPost({ request }) {
       outputMint: action === "buy" ? mint : SOL_MINT,
       inputAmount: amount,
       outputAmount: null,
-      slippageBps: 500,
+      slippageBps: PUMP_SLIPPAGE_BPS,
       priceImpactPct: null,
       routePlan: [{ dex: pool === "pump" ? "Pump.fun bonding curve" : "PumpSwap" }],
       quoteAt: Date.now(),
