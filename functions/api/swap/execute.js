@@ -1,4 +1,4 @@
-const JUPITER_ORIGIN = "https://api.jup.ag";
+const DEFAULT_RPC = "https://api.mainnet-beta.solana.com";
 const HEADERS = {
   "content-type": "application/json; charset=utf-8",
   "cache-control": "no-store",
@@ -10,92 +10,128 @@ function json(data, status = 200) {
   return new Response(JSON.stringify(data), { status, headers: HEADERS });
 }
 
+async function rpcCall(rpcUrl, method, params) {
+  const response = await fetch(rpcUrl, {
+    method: "POST",
+    headers: { "content-type": "application/json", accept: "application/json" },
+    body: JSON.stringify({ jsonrpc: "2.0", id: "solana-paper-trader", method, params }),
+    redirect: "error",
+    signal: AbortSignal.timeout(12000)
+  });
+  const body = await response.text();
+  if (body.length > 200000) throw new Error("Solana RPC response exceeded the size limit.");
+  let data;
+  try { data = JSON.parse(body); } catch { throw new Error("Solana RPC returned invalid JSON."); }
+  if (!response.ok || data.error) {
+    throw new Error(String(data?.error?.message || "Solana RPC request failed (HTTP " + response.status + ").").slice(0, 220));
+  }
+  return data.result;
+}
+
+async function waitForConfirmation(rpcUrl, signature) {
+  for (let attempt = 0; attempt < 12; attempt++) {
+    const result = await rpcCall(rpcUrl, "getSignatureStatuses", [[signature], { searchTransactionHistory: true }]);
+    const status = result?.value?.[0];
+    if (status?.err) {
+      throw new Error("Solana rejected the transaction: " + JSON.stringify(status.err).slice(0, 220));
+    }
+    if (status && ["confirmed", "finalized"].includes(status.confirmationStatus)) {
+      return status.confirmationStatus;
+    }
+    await new Promise(resolve => setTimeout(resolve, 700));
+  }
+  return "pending";
+}
+
 export async function onRequestPost({ request, env }) {
   const url = new URL(request.url);
   const origin = request.headers.get("origin");
   if (origin && origin !== url.origin) {
     return json({ ok: false, error: "Cross-origin swap requests are not allowed." }, 403);
   }
-  if (!env.JUPITER_API_KEY) {
-    return json({ ok: false, error: "Live swaps are not configured yet. Add JUPITER_API_KEY as a Cloudflare Pages secret." }, 503);
-  }
 
   let input;
-  try { input = await request.json(); } catch { return json({ ok: false, error: "Invalid JSON request." }, 400); }
-  const signedTransaction = input?.signedTransaction;
-  const requestId = input?.requestId;
-  if (typeof signedTransaction !== "string" || signedTransaction.length < 100 || signedTransaction.length > 500000 || !/^[A-Za-z0-9+/]+={0,2}$/.test(signedTransaction)) {
-    return json({ ok: false, error: "Invalid signed transaction payload." }, 400);
-  }
-  if (typeof requestId !== "string" || requestId.length < 1 || requestId.length > 160 || !/^[A-Za-z0-9_-]+$/.test(requestId)) {
-    return json({ ok: false, error: "Invalid Jupiter request ID." }, 400);
+  try { input = await request.json(); } catch {
+    return json({ ok: false, error: "Invalid JSON request." }, 400);
   }
 
-  // Jupiter documents retries with the same requestId and signedTransaction as
-  // the recovery path for a request that fails mid-flight. Never create a new
-  // order or change the signed payload while recovering an uncertain execution.
-  const payload = JSON.stringify({ signedTransaction, requestId });
-  let upstream = null;
-  let lastNetworkError = "";
-  for (let attempt = 1; attempt <= 2; attempt++) {
+  const signedTransactions = input?.signedTransactions;
+  if (!Array.isArray(signedTransactions) || signedTransactions.length < 1 || signedTransactions.length > 5 ||
+      signedTransactions.some(value => typeof value !== "string" || value.length < 100 || value.length > 500000 ||
+        !/^[A-Za-z0-9+/]+={0,2}$/.test(value))) {
+    return json({ ok: false, error: "Invalid signed transaction list." }, 400);
+  }
+  const outputAmount = typeof input?.outputAmount === "string" && /^[0-9]{1,30}$/.test(input.outputAmount)
+    ? input.outputAmount : null;
+
+  let rpcUrl = String(env?.SOLANA_RPC_URL || DEFAULT_RPC);
+  try {
+    const parsed = new URL(rpcUrl);
+    if (parsed.protocol !== "https:" || !parsed.hostname) throw new Error("RPC URL must use HTTPS.");
+  } catch {
+    return json({ ok: false, error: "SOLANA_RPC_URL must be a valid HTTPS Solana RPC URL." }, 503);
+  }
+
+  const signatures = [];
+  for (let index = 0; index < signedTransactions.length; index++) {
+    const signedTransaction = signedTransactions[index];
+    let signature;
     try {
-      upstream = await fetch(JUPITER_ORIGIN + "/swap/v2/execute", {
-        method: "POST",
-        headers: {
-          accept: "application/json",
-          "content-type": "application/json",
-          "x-api-key": env.JUPITER_API_KEY
-        },
-        body: payload,
-        redirect: "error",
-        signal: AbortSignal.timeout(12000)
-      });
-      // A 5xx may mean Jupiter failed while processing the request. Retry once
-      // with the exact same request ID and signed transaction for status recovery.
-      if (upstream.status < 500 || attempt === 2) break;
-      lastNetworkError = "Jupiter returned HTTP " + upstream.status;
+      signature = await rpcCall(rpcUrl, "sendTransaction", [signedTransaction, {
+        encoding: "base64",
+        skipPreflight: false,
+        preflightCommitment: "confirmed",
+        maxRetries: 2
+      }]);
     } catch (error) {
-      lastNetworkError = String(error?.name || error?.message || "network request failed").slice(0, 100);
-      if (attempt === 2) {
-        return json({
-          ok: false,
-          error: "Jupiter did not return an execution result after a safe recovery retry. Check wallet activity before starting a new order.",
-          diagnostic: lastNetworkError,
-          retryAttempted: true
-        }, 502);
-      }
+      return json({
+        ok: false,
+        status: "Failed",
+        error: "Solana RPC could not submit transaction " + (index + 1) + ". If the network result is uncertain, check wallet activity before retrying.",
+        diagnostic: String(error?.message || "RPC send failed").slice(0, 220),
+        signatures
+      }, 502);
+    }
+
+    if (typeof signature !== "string" || signature.length < 32 || signature.length > 100) {
+      return json({ ok: false, status: "Failed", error: "Solana RPC returned an invalid transaction signature.", signatures }, 502);
+    }
+    signatures.push(signature);
+
+    let confirmation;
+    try {
+      confirmation = await waitForConfirmation(rpcUrl, signature);
+    } catch (error) {
+      return json({
+        ok: false,
+        status: "Failed",
+        error: "Transaction " + (index + 1) + " was submitted but did not confirm successfully. Check wallet activity before retrying.",
+        diagnostic: String(error?.message || "Confirmation failed").slice(0, 220),
+        signature,
+        signatures
+      }, 502);
+    }
+
+    if (confirmation === "pending") {
+      return json({
+        ok: true,
+        status: "Pending",
+        signature,
+        signatures,
+        outputAmount,
+        error: "The transaction was submitted but confirmation is still pending. Check the signature before attempting another swap."
+      });
     }
   }
 
-  if (!upstream) {
-    return json({
-      ok: false,
-      error: "Jupiter did not return an execution result. Check wallet activity before starting a new order.",
-      diagnostic: lastNetworkError || "No response from Jupiter",
-      retryAttempted: true
-    }, 502);
-  }
-
-  const body = await upstream.text();
-  if (body.length > 100000) return json({ ok: false, error: "Jupiter execution response exceeded the size limit. Check wallet activity before retrying." }, 502);
-  let data;
-  try { data = JSON.parse(body); } catch {
-    return json({
-      ok: false,
-      error: "Jupiter returned an unreadable execution result. Check wallet activity before starting a new order.",
-      httpStatus: upstream.status
-    }, 502);
-  }
-  if (!upstream.ok) {
-    return json({
-      ok: false,
-      error: data.error || data.errorMessage || "Jupiter execution failed (HTTP " + upstream.status + ").",
-      code: data.code ?? null,
-      signature: data.signature ?? null,
-      status: data.status ?? null
-    }, upstream.status >= 400 && upstream.status < 500 ? 400 : 502);
-  }
-  return json(data);
+  return json({
+    ok: true,
+    status: "Success",
+    provider: "Raydium",
+    signature: signatures[signatures.length - 1],
+    signatures,
+    outputAmount
+  });
 }
 
 export function onRequest({ request, env }) {
