@@ -15,7 +15,7 @@ async function rpcCall(rpcUrl, method, params) {
     method: "POST",
     headers: { "content-type": "application/json", accept: "application/json" },
     body: JSON.stringify({ jsonrpc: "2.0", id: "solana-paper-trader", method, params }),
-    redirect: "error",
+    redirect: "manual",
     signal: AbortSignal.timeout(12000)
   });
   const body = await response.text();
