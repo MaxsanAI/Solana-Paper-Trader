@@ -124,96 +124,11 @@ export async function onRequestGet({ request, env }) {
       quoteAt: Date.now()
     });
   } catch (error) {
-    const raydiumDiagnostic = String(error?.message || error?.name || "Raydium request failed");
-    if (/ROUTE_NOT_FOUND|no route found|route not found/i.test(raydiumDiagnostic)) {
-      try {
-        // Raydium may not support a route for newly launched/pump tokens.
-        // Try Jupiter's aggregator before returning a route error.
-        const jupiterBase = env?.JUPITER_API_KEY
-          ? "https://api.jup.ag/swap/v1"
-          : "https://lite-api.jup.ag/swap/v1";
-        const jupiterHeaders = { accept: "application/json" };
-        if (env?.JUPITER_API_KEY) jupiterHeaders["x-api-key"] = String(env.JUPITER_API_KEY);
-        const quoteUrl = new URL(jupiterBase + "/quote");
-        quoteUrl.search = new URLSearchParams({
-          inputMint: params.inputMint,
-          outputMint: params.outputMint,
-          amount: params.amount,
-          slippageBps: String(slippageBps),
-          swapMode: "ExactIn",
-          instructionVersion: "V2"
-        }).toString();
-        const quoteResponse = await fetch(quoteUrl.toString(), {
-          headers: jupiterHeaders,
-          redirect: "manual",
-          signal: AbortSignal.timeout(20000)
-        });
-        const quoteText = await quoteResponse.text();
-        if (quoteText.length > 500000) throw new Error("Jupiter quote response exceeded the size limit.");
-        let quote;
-        try { quote = JSON.parse(quoteText); } catch { throw new Error("Jupiter returned invalid quote JSON (HTTP " + quoteResponse.status + ")."); }
-        if (!quoteResponse.ok || quote?.error || !/^[0-9]+$/.test(String(quote?.outAmount || ""))) {
-          throw new Error(String(quote?.error || quote?.message || "Jupiter found no usable route (HTTP " + quoteResponse.status + ").").slice(0, 220));
-        }
-
-        const buildResponse = await fetch(jupiterBase + "/swap", {
-          method: "POST",
-          headers: { ...jupiterHeaders, "content-type": "application/json" },
-          body: JSON.stringify({
-            quoteResponse: quote,
-            userPublicKey: params.taker,
-            wrapAndUnwrapSol: true,
-            dynamicComputeUnitLimit: true,
-            prioritizationFeeLamports: {
-              priorityLevelWithMaxLamports: { priorityLevel: "high", maxLamports: 100000 }
-            }
-          }),
-          redirect: "manual",
-          signal: AbortSignal.timeout(20000)
-        });
-        const buildText = await buildResponse.text();
-        if (buildText.length > 500000) throw new Error("Jupiter transaction response exceeded the size limit.");
-        let built;
-        try { built = JSON.parse(buildText); } catch { throw new Error("Jupiter returned invalid transaction JSON (HTTP " + buildResponse.status + ")."); }
-        if (!buildResponse.ok || typeof built?.swapTransaction !== "string" || built.swapTransaction.length < 100) {
-          throw new Error(String(built?.error || built?.message || "Jupiter could not build a swap transaction (HTTP " + buildResponse.status + ").").slice(0, 220));
-        }
-
-        return json({
-          ok: true,
-          provider: "Jupiter",
-          transactions: [built.swapTransaction],
-          inputMint: params.inputMint,
-          outputMint: params.outputMint,
-          inputAmount: String(quote.inAmount || params.amount),
-          outputAmount: String(quote.outAmount),
-          minimumOutputAmount: String(quote.otherAmountThreshold || ""),
-          slippageBps: Number(quote.slippageBps ?? slippageBps),
-          priceImpactPct: Number(quote.priceImpactPct || 0),
-          routePlan: Array.isArray(quote.routePlan) ? quote.routePlan.map(route => ({
-            poolId: String(route.swapInfo?.ammKey || ""),
-            inputMint: String(route.swapInfo?.inputMint || ""),
-            outputMint: String(route.swapInfo?.outputMint || ""),
-            feeAmount: String(route.swapInfo?.feeAmount || ""),
-            feeMint: String(route.swapInfo?.feeMint || ""),
-            dex: String(route.swapInfo?.label || "")
-          })) : [],
-          quoteAt: Date.now()
-        });
-      } catch (jupiterError) {
-        const status = jupiterError.status === 400 || jupiterError.status === 429 ? jupiterError.status : 502;
-        return json({
-          ok: false,
-          error: "No usable swap route was found on Raydium or Jupiter.",
-          diagnostic: "Raydium: " + raydiumDiagnostic.slice(0, 100) + " | Jupiter: " + String(jupiterError?.message || jupiterError?.name || "request failed").slice(0, 140)
-        }, status);
-      }
-    }
     const status = error.status === 400 || error.status === 429 ? error.status : 502;
     return json({
       ok: false,
       error: "Raydium could not prepare this swap.",
-      diagnostic: raydiumDiagnostic.slice(0, 220)
+      diagnostic: String(error?.message || error?.name || "Raydium request failed").slice(0, 220)
     }, status);
   }
 }
