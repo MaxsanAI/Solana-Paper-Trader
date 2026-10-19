@@ -194,6 +194,7 @@ body.live-mode.live-terminal-page #liveTradingSection .live-data-note{display:bl
 <div id="embeddedWalletAuth" class="grid grid-cols-1 md:grid-cols-3 gap-3">
 <div><label class="text-xs muted block mb-1" for="embeddedWalletUsernameInput">Username</label><input id="embeddedWalletUsernameInput" class="field" autocomplete="username" maxlength="32" placeholder="e.g. maxtrader"></div>
 <div><label class="text-xs muted block mb-1" for="embeddedWalletPassword">Password (min. 12 characters)</label><input id="embeddedWalletPassword" class="field" type="password" autocomplete="current-password" minlength="12" placeholder="Local password"></div>
+<div class="md:col-span-3"><label class="flex items-start gap-2 text-xs muted"><input id="embeddedWalletRemember" type="checkbox" class="mt-0.5"> <span><strong class="text-white">Remember and unlock automatically on this device</strong><br>Skip password next time. Only enable on your own trusted computer; anyone with access to this browser profile may be able to use the wallet.</span></label></div>
 <div class="flex items-end gap-2"><button id="embeddedWalletCreateBtn" class="btn btn-buy flex-1" type="button">Create wallet</button><button id="embeddedWalletLoginBtn" class="btn flex-1" type="button">Unlock / Login</button></div>
 </div>
 <div id="embeddedWalletDetails" hidden>
