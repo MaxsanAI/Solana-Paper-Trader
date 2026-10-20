@@ -622,10 +622,37 @@ async function liveSwap(side,forcedMint='',exitReason=''){
   const w3=await loadWeb3();
   const connection=new w3.Connection('https://solana-rpc.publicnode.com','confirmed');
   if(buy){
-   const lamports=await connection.getBalance(new w3.PublicKey(liveState.publicKey),'confirmed');
-   // Keep 0.003 SOL available for token-account rent and network/priority fees.
-   const requiredLamports=Math.floor(solAmount*1e9)+3000000;
-   if(lamports<requiredLamports)throw new Error('Not enough SOL for this buy plus a 0.003 SOL reserve for token-account creation and network fees. Reduce the order or add SOL.');
+   const owner=new w3.PublicKey(liveState.publicKey),mintKey=new w3.PublicKey(mint);
+   const balanceChecks=[
+    'https://solana-rpc.publicnode.com',
+    'https://api.mainnet.solana.com',
+    'https://api.mainnet-beta.solana.com'
+   ];
+   async function rpcRead(method,params){
+    const errors=[];
+    for(const rpcUrl of balanceChecks){
+     try{
+      const response=await fetch(rpcUrl,{method:'POST',headers:{'content-type':'application/json','accept':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:'live-buy-preflight',method,params}),cache:'no-store',signal:AbortSignal.timeout(8000)});
+      const payload=await response.json().catch(()=>({}));
+      if(!response.ok||payload.error)throw new Error(String(payload.error?.message||('HTTP '+response.status)));
+      if(!payload.result)throw new Error('Invalid RPC response');
+      return payload.result;
+     }catch(error){errors.push(new URL(rpcUrl).hostname+': '+String(error?.message||'RPC error').slice(0,70));}
+    }
+    throw new Error('Could not verify live wallet balances: '+errors.join(' | '));
+   }
+   const walletBalance=BigInt((await rpcRead('getBalance',[owner.toBase58(),{commitment:'confirmed'}])).value);
+   const tokenAccounts=await rpcRead('getTokenAccountsByOwner',[owner.toBase58(),{mint:mintKey.toBase58()},{encoding:'base64',commitment:'confirmed'}]);
+   // Existing token accounts do not need rent again. Reserve rent only when
+   // the wallet has no account for this mint, plus a small network-fee buffer.
+   const hasTokenAccount=Array.isArray(tokenAccounts.value)&&tokenAccounts.value.length>0;
+   const reserveLamports=hasTokenAccount?200000n:2300000n;
+   const requiredLamports=BigInt(Math.floor(solAmount*1e9))+reserveLamports;
+   if(walletBalance<requiredLamports){
+    const availableSol=Number(walletBalance>reserveLamports?walletBalance-reserveLamports:0n)/1e9;
+    const reserveSol=Number(reserveLamports)/1e9;
+    throw new Error('Insufficient SOL for this buy. Wallet balance: '+(Number(walletBalance)/1e9).toFixed(6)+' SOL; estimated reserve: '+reserveSol.toFixed(6)+' SOL ('+(hasTokenAccount?'network fees':'new token-account rent and network fees')+'); maximum order before fees: '+availableSol.toFixed(6)+' SOL. Lower the buy amount or add SOL.');
+   }
   }
   const inputMint=buy?SOL_MINT:mint,outputMint=buy?mint:SOL_MINT,amount=buy?String(Math.floor(solAmount*1e9)):trackedRaw;
   const params=new URLSearchParams({inputMint,outputMint,amount,taker:liveState.publicKey});
