@@ -2,6 +2,7 @@ const DEFAULT_RPC = "https://api.mainnet-beta.solana.com";
 // Alternate official mainnet RPC hostname. Used only after an explicit access-denied
 // response; never fail over on timeouts or other ambiguous transaction-submission errors.
 const ALTERNATE_RPC = "https://api.mainnet.solana.com";
+const PUBLICNODE_RPC = "https://solana-rpc.publicnode.com";
 const HEADERS = {
   "content-type": "application/json; charset=utf-8",
   "cache-control": "no-store",
@@ -26,7 +27,12 @@ async function rpcCall(rpcUrl, method, params) {
   let data;
   try { data = JSON.parse(body); } catch { throw new Error("Solana RPC returned invalid JSON."); }
   if (!response.ok || data.error) {
-    throw new Error(String(data?.error?.message || "Solana RPC request failed (HTTP " + response.status + ").").slice(0, 220));
+    const detail = data?.error?.data && typeof data.error.data === "object"
+      ? JSON.stringify(data.error.data).slice(0, 140)
+      : "";
+    throw new Error(String(data?.error?.message || "Solana RPC request failed (HTTP " + response.status + ").")
+      .concat(detail ? " | " + detail : "")
+      .slice(0, 220));
   }
   return data.result;
 }
@@ -44,7 +50,7 @@ async function rpcCallWithFallback(primaryUrl, method, params) {
     // timeout, connection reset, or other ambiguous sendTransaction errors.
     if (!isProviderAccessError(primaryError)) throw primaryError;
 
-    const candidates = [...new Set([DEFAULT_RPC, ALTERNATE_RPC])]
+    const candidates = [...new Set([PUBLICNODE_RPC, DEFAULT_RPC, ALTERNATE_RPC])]
       .filter(candidate => candidate !== primaryUrl);
     const failures = [String(primaryError?.message || "provider access denied").slice(0, 70)];
 
@@ -121,7 +127,7 @@ export async function onRequestPost({ request, env }) {
       return json({
         ok: false,
         status: "Failed",
-        error: "Solana RPC could not submit transaction " + (index + 1) + ". If the network result is uncertain, check wallet activity before retrying.",
+        error: "Solana rejected or could not submit transaction " + (index + 1) + ". Check the RPC detail below; if the result is uncertain, check wallet activity before retrying.",
         diagnostic: String(error?.message || "RPC send failed").slice(0, 220),
         signatures
       }, 502);
@@ -139,7 +145,7 @@ export async function onRequestPost({ request, env }) {
       return json({
         ok: false,
         status: "Failed",
-        error: "Transaction " + (index + 1) + " was submitted but did not confirm successfully. Check wallet activity before retrying.",
+        error: "Transaction " + (index + 1) + " was submitted but confirmation checking failed. Check wallet activity before retrying.",
         diagnostic: String(error?.message || "Confirmation failed").slice(0, 220),
         signature,
         signatures
