@@ -31,8 +31,27 @@ export async function onRequestPost({ request, env }) {
   if (!publicKey || !secretKey) {
     return json({
       ok: false,
-      error: "MoonPay is not configured yet. Add MOONPAY_PUBLIC_KEY and MOONPAY_SECRET_KEY as Cloudflare Pages environment variables, then redeploy."
+      code: "MOONPAY_KEYS_MISSING",
+      error: "MoonPay is not configured on this Cloudflare Pages deployment. Add MOONPAY_PUBLIC_KEY and MOONPAY_SECRET_KEY under Settings → Variables and Secrets, then redeploy."
     }, 503);
+  }
+
+  const requestedEnv = String(env?.MOONPAY_ENV || "").trim().toLowerCase();
+  if (requestedEnv && !["sandbox", "production"].includes(requestedEnv)) {
+    return json({ ok: false, code: "MOONPAY_ENV_INVALID", error: "MOONPAY_ENV must be either sandbox or production." }, 500);
+  }
+  const publicIsTest = publicKey.startsWith("pk_test_");
+  const publicIsLive = publicKey.startsWith("pk_live_");
+  const secretIsTest = secretKey.startsWith("sk_test_");
+  const secretIsLive = secretKey.startsWith("sk_live_");
+  if ((!publicIsTest && !publicIsLive) || (!secretIsTest && !secretIsLive)) {
+    return json({ ok: false, code: "MOONPAY_KEY_FORMAT", error: "MoonPay keys have an unexpected format. Use the publishable key and secret key from the same MoonPay environment." }, 500);
+  }
+  if (publicIsTest !== secretIsTest || publicIsLive !== secretIsLive) {
+    return json({ ok: false, code: "MOONPAY_KEY_ENV_MISMATCH", error: "MoonPay publishable and secret keys belong to different environments. Both must be sandbox keys or both production keys." }, 500);
+  }
+  if ((requestedEnv === "sandbox" && !publicIsTest) || (requestedEnv === "production" && !publicIsLive)) {
+    return json({ ok: false, code: "MOONPAY_ENV_KEY_MISMATCH", error: "MOONPAY_ENV does not match the configured MoonPay key prefix. Use pk_test_/sk_test_ with sandbox, or pk_live_/sk_live_ with production." }, 500);
   }
 
   let body;
@@ -53,7 +72,7 @@ export async function onRequestPost({ request, env }) {
   params.set("theme", "dark");
   const query = "?" + params.toString();
   const signature = await signQuery(query, secretKey);
-  const isSandbox = String(env?.MOONPAY_ENV || "").toLowerCase() === "sandbox" || publicKey.startsWith("pk_test_");
+  const isSandbox = publicIsTest;
   const host = isSandbox ? "https://buy-sandbox.moonpay.com" : "https://buy.moonpay.com";
   return json({ ok: true, url: host + query + "&signature=" + encodeURIComponent(signature) });
 }
