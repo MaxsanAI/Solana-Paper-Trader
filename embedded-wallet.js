@@ -384,13 +384,29 @@ async function buySolWithMoonPay() {
   if (!popup) throw new Error("Allow pop-ups for this site to open the secure payment provider.");
   if (button) { button.disabled = true; button.textContent = "Preparing secure checkout…"; }
   try {
-    const response = await fetch("/api/onramp/sign", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ walletAddress: publicKey, amountUsd: amount })
-    });
+    let response;
+    try {
+      response = await fetch("/api/onramp/sign", {
+        method: "POST",
+        headers: { "content-type": "application/json", "accept": "application/json" },
+        cache: "no-store",
+        body: JSON.stringify({ walletAddress: publicKey, amountUsd: amount })
+      });
+    } catch {
+      throw new Error("Cannot reach the MoonPay signing service. Open the Cloudflare Pages deployment, not the static GitHub Pages copy, and check your connection.");
+    }
+    const contentType = response.headers.get("content-type") || "";
+    if (!contentType.includes("application/json")) {
+      throw new Error("MoonPay signing API is not running on this website. This feature requires the Cloudflare Pages deployment with Functions; GitHub Pages cannot sign the checkout URL.");
+    }
     const data = await response.json().catch(() => ({}));
-    if (!response.ok || !data.ok || !data.url) throw new Error(data.error || "MoonPay checkout is not configured yet. The site owner must add the MoonPay API keys in Cloudflare Pages settings.");
+    if (!response.ok || !data.ok || !data.url) {
+      throw new Error(data.error || ("MoonPay signing service returned HTTP " + response.status + ". Check Cloudflare Pages Functions and MoonPay key configuration."));
+    }
+    const checkout = new URL(data.url);
+    if (checkout.protocol !== "https:" || !["buy.moonpay.com", "buy-sandbox.moonpay.com"].includes(checkout.hostname)) {
+      throw new Error("MoonPay returned an unexpected checkout address. No payment page was opened.");
+    }
     status("Opening MoonPay secure checkout. Review the final amount, fees, and recipient before paying.");
     popup.opener = null;
     popup.location.href = data.url;
