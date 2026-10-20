@@ -641,9 +641,23 @@ async function liveSwap(side,forcedMint='',exitReason=''){
    if(!buy){
     // Mint account lookup is a direct account read, not an indexed owner-token query.
     // The latter can be blocked by public RPC providers and prevents sells from being prepared.
-    const mintAccount=await connection.getAccountInfo(new w3.PublicKey(mint),'confirmed');
-    if(!mintAccount||mintAccount.data.length<82)throw new Error('Could not read the token mint account from Solana RPC. Refresh and try again.');
-    const owner=mintAccount.owner.toBase58();
+    // Public RPCs can return HTTP 403 for one endpoint/IP. Try independent endpoints
+    // for this read-only mint lookup; do not sign or submit anything during this step.
+    let mintAccount=null;const mintReadErrors=[];
+    for(const rpcUrl of ['https://api.mainnet-beta.solana.com','https://api.mainnet.solana.com','https://solana-rpc.publicnode.com']){
+     try{
+      const response=await fetch(rpcUrl,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:'mint-read',method:'getAccountInfo',params:[mint,{encoding:'base64',commitment:'confirmed'}]}),cache:'no-store'});
+      const payload=await response.json().catch(()=>({}));
+      if(!response.ok||payload.error)throw new Error(String(payload.error?.message||('HTTP '+response.status)));
+      const value=payload.result?.value;
+      if(!value||!Array.isArray(value.data)||typeof value.data[0]!=='string')throw new Error('Mint account was not returned');
+      const binary=atob(value.data[0]);const bytes=new Uint8Array(binary.length);for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);
+      mintAccount={owner:value.owner,data:bytes};break;
+     }catch(error){mintReadErrors.push(new URL(rpcUrl).hostname+': '+String(error?.message||'RPC read failed').slice(0,90));}
+    }
+    if(!mintAccount)throw new Error('Could not read token mint from available Solana RPC endpoints. '+mintReadErrors.join(' | '));
+    if(mintAccount.data.length<82)throw new Error('The returned token mint account data is invalid.');
+    const owner=mintAccount.owner;
     if(!['TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA','TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb'].includes(owner))throw new Error('The mint is not owned by a supported Solana Token Program.');
     tokenDecimals=Number(mintAccount.data[44]);
     if(!Number.isInteger(tokenDecimals)||tokenDecimals<0||tokenDecimals>18)throw new Error('The mint returned invalid token decimals; refusing to prepare a sell.');
